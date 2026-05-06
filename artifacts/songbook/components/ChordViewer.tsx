@@ -7,7 +7,7 @@ interface ChordViewerProps {
   content: string;
 }
 
-type LineType = "section" | "chord" | "tab" | "strum" | "note" | "lyric" | "empty";
+type LineType = "section" | "chord" | "tab" | "strum" | "riff" | "note" | "lyric" | "empty";
 
 interface ParsedLine {
   type: LineType;
@@ -25,13 +25,14 @@ function parseLine(line: string): LineType {
   if (/^\[.+\]$/.test(trimmed)) return "section";
   if (trimmed.startsWith("STRUM:"))  return "strum";
   if (trimmed.startsWith("NOTE:"))   return "note";
+  if (trimmed.startsWith("RIFF:"))   return "riff";
   if (TAB_LINE_REGEX.test(trimmed))  return "tab";
   const tokens = trimmed.split(/\s+/).filter(Boolean);
   if (tokens.length > 0 && tokens.every((t) => CHORD_TOKEN_REGEX.test(t))) return "chord";
   return "lyric";
 }
 
-// ─── Strum rendering helpers ──────────────────────────────────────────────────
+// ─── Strum helpers ────────────────────────────────────────────────────────────
 type StrumBeat = "-" | "D" | "U" | "DU" | "x";
 
 const BEAT_SYMBOL: Record<StrumBeat, string> = {
@@ -41,8 +42,22 @@ const BEAT_SYMBOL: Record<StrumBeat, string> = {
 function parseStrumBeats(raw: string): StrumBeat[] {
   const payload = raw.startsWith("STRUM:") ? raw.slice(6) : raw;
   return payload.split(",").map((b) =>
-    ["D", "U", "DU", "x"].includes(b) ? (b as StrumBeat) : "-"
-  ) as StrumBeat[];
+    (["D", "U", "DU", "x", "-"] as string[]).includes(b) ? (b as StrumBeat) : "-"
+  );
+}
+
+// ─── Riff helpers ─────────────────────────────────────────────────────────────
+const RIFF_STRING_NAMES = ["e", "B", "G", "D", "A", "E"];
+
+interface RiffString { name: string; slots: string }
+
+function parseRiffLine(raw: string): RiffString[] {
+  const payload = raw.startsWith("RIFF:") ? raw.slice(5) : raw;
+  return payload.split(":").slice(0, 6).map((part, i) => {
+    const name = RIFF_STRING_NAMES[i] ?? "?";
+    const inner = part.replace(/^[a-zA-Z]\|/, "").replace(/\|$/, "");
+    return { name, slots: inner };
+  });
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -96,56 +111,85 @@ export function ChordViewer({ content }: ChordViewerProps) {
             );
           }
 
+          // ── Strum ────────────────────────────────────────────────────────
           if (line.type === "strum") {
             const beats = parseStrumBeats(line.text.trim());
             return (
-              <View key={i} style={styles.strumRow}>
-                {beats.map((beat, bi) => (
-                  <React.Fragment key={bi}>
-                    {bi === 4 && (
-                      <View style={[styles.strumBarDiv, { backgroundColor: colors.border }]} />
-                    )}
-                    <View
-                      style={[
-                        styles.strumBeat,
-                        {
-                          backgroundColor:
-                            beat === "-" ? "transparent"
-                            : beat === "x" ? `${colors.destructive}18`
-                            : `${colors.primary}18`,
-                          borderColor:
-                            beat === "-" ? `${colors.border}88`
-                            : beat === "x" ? `${colors.destructive}66`
-                            : `${colors.primary}66`,
-                        },
-                      ]}
-                    >
+              <View
+                key={i}
+                style={[
+                  styles.strumContainer,
+                  { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` },
+                ]}
+              >
+                <Text style={[styles.strumLabel, { color: `${colors.primary}88` }]}>
+                  strum
+                </Text>
+                <View style={styles.strumBeats}>
+                  {beats.map((beat, bi) => (
+                    <React.Fragment key={bi}>
+                      {bi === 4 && (
+                        <Text style={[styles.strumBarChar, { color: `${colors.border}` }]}>│</Text>
+                      )}
                       <Text
                         style={[
-                          styles.strumBeatText,
+                          styles.strumSymbol,
                           {
                             color:
-                              beat === "-" ? colors.mutedForeground
+                              beat === "-" ? `${colors.border}`
                               : beat === "x" ? colors.destructive
                               : colors.primary,
-                            opacity: beat === "-" ? 0.3 : 1,
+                            opacity: beat === "-" ? 0.5 : 1,
                           },
                         ]}
                       >
                         {BEAT_SYMBOL[beat]}
                       </Text>
-                    </View>
-                  </React.Fragment>
+                    </React.Fragment>
+                  ))}
+                </View>
+              </View>
+            );
+          }
+
+          // ── Riff (RIFF: prefix) ───────────────────────────────────────────
+          if (line.type === "riff") {
+            const strings = parseRiffLine(line.text.trim());
+            // Only render strings that have at least one non-dash character
+            const used = strings.filter((s) => /[^-]/.test(s.slots));
+            return (
+              <View
+                key={i}
+                style={[
+                  styles.riffBlock,
+                  {
+                    backgroundColor: `${colors.primary}07`,
+                    borderColor: `${colors.primary}20`,
+                  },
+                ]}
+              >
+                {(used.length > 0 ? used : strings).map((s, si) => (
+                  <View key={si} style={styles.riffRow}>
+                    <Text style={[styles.riffStrName, { color: `${colors.primary}88` }]}>
+                      {s.name}
+                    </Text>
+                    <Text style={[styles.riffContent, { color: colors.primary }]}>
+                      {`|${s.slots}|`}
+                    </Text>
+                  </View>
                 ))}
               </View>
             );
           }
 
+          // ── Note ──────────────────────────────────────────────────────────
           if (line.type === "note") {
             const noteText = line.text.startsWith("NOTE:") ? line.text.slice(5) : line.text;
             return (
-              <View key={i} style={styles.noteRow}>
-                <Text style={[styles.noteDot, { color: colors.mutedForeground }]}>ℹ</Text>
+              <View
+                key={i}
+                style={[styles.noteRow, { borderLeftColor: `${colors.mutedForeground}44` }]}
+              >
                 <Text style={[styles.noteText, { color: colors.mutedForeground }]}>
                   {noteText}
                 </Text>
@@ -153,6 +197,7 @@ export function ChordViewer({ content }: ChordViewerProps) {
             );
           }
 
+          // ── Lyric ─────────────────────────────────────────────────────────
           return (
             <Text key={i} style={[styles.lyricLine, { color: colors.foreground }]}>
               {line.text || " "}
@@ -169,12 +214,12 @@ const styles = StyleSheet.create({
   container: { paddingHorizontal: 2 },
   empty: { paddingVertical: 20, alignItems: "center" },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  spacer: { height: 12 },
+  spacer: { height: 10 },
 
   sectionHeader: {
-    fontSize: 13, fontFamily: "Inter_700Bold",
-    letterSpacing: 1, textTransform: "uppercase",
-    marginTop: 16, marginBottom: 4,
+    fontSize: 12, fontFamily: "Inter_700Bold",
+    letterSpacing: 1.2, textTransform: "uppercase",
+    marginTop: 18, marginBottom: 6,
   },
   chordLine: {
     fontSize: 15, fontFamily: "Inter_600SemiBold",
@@ -182,32 +227,55 @@ const styles = StyleSheet.create({
   },
   tabLine: {
     fontSize: 13, fontFamily: "Inter_500Medium",
-    letterSpacing: 0.5, lineHeight: 20,
+    letterSpacing: 0.3, lineHeight: 19,
   },
   lyricLine: {
     fontSize: 15, fontFamily: "Inter_400Regular", lineHeight: 24,
   },
 
-  // Strum
-  strumRow: {
+  // Strum — horizontal strip with a subtle tinted background
+  strumContainer: {
     flexDirection: "row", alignItems: "center",
-    gap: 3, marginVertical: 4, flexWrap: "nowrap",
+    borderRadius: 8, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 6,
+    marginVertical: 3, gap: 10,
   },
-  strumBarDiv: { width: 1.5, height: 24, borderRadius: 1, marginHorizontal: 1 },
-  strumBeat: {
-    width: 26, height: 30, borderRadius: 6, borderWidth: 1,
-    alignItems: "center", justifyContent: "center",
+  strumLabel: {
+    fontSize: 9, fontFamily: "Inter_700Bold",
+    letterSpacing: 1.2, textTransform: "uppercase",
   },
-  strumBeatText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  strumBeats: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+  },
+  strumBarChar: {
+    fontSize: 16, fontFamily: "Inter_400Regular", opacity: 0.4, marginHorizontal: 2,
+  },
+  strumSymbol: {
+    fontSize: 16, fontFamily: "Inter_600SemiBold",
+  },
 
-  // Note
-  noteRow: {
-    flexDirection: "row", alignItems: "flex-start",
-    gap: 6, marginVertical: 2,
+  // Riff block
+  riffBlock: {
+    borderRadius: 8, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 7,
+    marginVertical: 3, gap: 1,
   },
-  noteDot: { fontSize: 12, lineHeight: 20, opacity: 0.6 },
+  riffRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  riffStrName: {
+    width: 10, fontSize: 11, fontFamily: "Inter_600SemiBold", textAlign: "right",
+  },
+  riffContent: {
+    fontSize: 13, fontFamily: "Inter_500Medium",
+    letterSpacing: 0.3, lineHeight: 20,
+  },
+
+  // Note — left-border style, italic
+  noteRow: {
+    borderLeftWidth: 2.5, paddingLeft: 10,
+    marginVertical: 2,
+  },
   noteText: {
     fontSize: 13, fontFamily: "Inter_400Regular",
-    fontStyle: "italic", lineHeight: 20, flex: 1,
+    fontStyle: "italic", lineHeight: 20,
   },
 });

@@ -55,7 +55,7 @@ A personal mobile songbook app where musicians create and store their own songs 
 - Song cards showing title, artist, key badge, genre, and tempo
 - Song viewer with syntax-highlighted chord/tab display (section headers, chord lines, lyrics)
 - Song editor with title, artist, key selector, tempo, genre, and section-based content
-- Five line types per section: **Chords** (amber chips), **Lyrics** (text), **Strum** (8-beat D/U grid), **Riff** (tab text), **Note** (italic annotation)
+- Five line types per section: **Chords** (amber chips), **Lyrics** (text), **Strum** (8-beat D/U grid), **Riff** (6-string visual tap grid → fret picker 0–9), **Note** (italic annotation)
 - Long-press to delete from library
 - **Chord library tab** — personal chord collection in a 2-column grid
 - **Interactive chord diagram builder** — tap frets to place fingers, toggle muted/open strings, add barre, shift fret position
