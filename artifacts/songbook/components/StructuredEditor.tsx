@@ -37,7 +37,7 @@ type NoteLine  = { id: string; type: "note";  text: string };
 type SongLine = ChordLine | LyricLine | StrumLine | RiffLine | NoteLine;
 type Section  = { id: string; name: string; lines: SongLine[] };
 
-type EditingChord = { sectionId: string; lineId: string; idx: number; value: string };
+type EditingChord = { sectionId: string; lineId: string; idx: number; value: string; autoFocus?: boolean };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const genId = () =>
@@ -378,7 +378,7 @@ export function StructuredEditor({ content, onChange }: Props) {
       const sec = updated.find((s) => s.id === sectionId);
       const line = sec?.lines.find((l) => l.id === lineId);
       if (line && line.type === "chord") {
-        setEditingChord({ sectionId, lineId, idx: line.chords.length - 1, value: "" });
+        setEditingChord({ sectionId, lineId, idx: line.chords.length - 1, value: "", autoFocus: false });
       }
       return updated;
     });
@@ -465,6 +465,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                               <ChordEditInput
                                 key={`${line.id}-${idx}`}
                                 value={editingChord.value}
+                                autoFocus={editingChord.autoFocus ?? true}
                                 onChange={(v) => setEditingChord({ ...editingChord, value: v })}
                                 onBlur={() => {
                                   if (suggestionSelectedRef.current) {
@@ -482,7 +483,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                                 key={`${line.id}-${idx}`}
                                 chord={chord || "?"}
                                 onPress={() =>
-                                  setEditingChord({ sectionId: section.id, lineId: line.id, idx, value: chord })
+                                  setEditingChord({ sectionId: section.id, lineId: line.id, idx, value: chord, autoFocus: true })
                                 }
                                 onLongPress={() => deleteChord(section.id, line.id, idx)}
                                 colors={colors}
@@ -974,8 +975,8 @@ function ChordChip({ chord, onPress, onLongPress, colors }: {
   );
 }
 
-function ChordEditInput({ value, onChange, onBlur, onCommit, onDelete, colors }: {
-  value: string; onChange: (v: string) => void;
+function ChordEditInput({ value, autoFocus, onChange, onBlur, onCommit, onDelete, colors }: {
+  value: string; autoFocus?: boolean; onChange: (v: string) => void;
   onBlur: () => void; onCommit: () => void; onDelete: () => void; colors: ColorsLike;
 }) {
   return (
@@ -986,7 +987,7 @@ function ChordEditInput({ value, onChange, onBlur, onCommit, onDelete, colors }:
         onChangeText={onChange}
         onBlur={onBlur}
         onSubmitEditing={onCommit}
-        autoFocus
+        autoFocus={autoFocus}
         autoCapitalize="none"
         autoCorrect={false}
         selectTextOnFocus
