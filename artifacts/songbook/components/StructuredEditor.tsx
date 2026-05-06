@@ -123,7 +123,7 @@ export function parseContent(raw: string): Section[] {
     }
     if (!line.trim()) continue;
     if (!current) {
-      current = { id: genId(), name: "Verse 1", lines: [] };
+      current = { id: genId(), name: "Verse", lines: [] };
       result.push(current);
     }
 
@@ -187,7 +187,7 @@ export function serializeContent(sections: Section[]): string {
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 const SECTION_PRESETS = [
-  "Intro", "Verse 1", "Verse 2", "Pre-Chorus",
+  "Intro", "Verse", "Pre-Chorus",
   "Chorus", "Bridge", "Outro", "Solo",
 ];
 

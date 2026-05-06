@@ -11,6 +11,7 @@ import {
 
 import { Song } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+import { relativeTime } from "@/utils/relativeTime";
 
 interface SongCardProps {
   song: Song;
@@ -33,6 +34,9 @@ export function SongCard({ song, onDelete }: SongCardProps) {
   const lineCount = song.content
     ? song.content.split("\n").filter((l) => l.trim()).length
     : 0;
+
+  const visibleTags = song.tags.slice(0, 3);
+  const extraTagCount = song.tags.length - visibleTags.length;
 
   return (
     <Pressable
@@ -74,14 +78,28 @@ export function SongCard({ song, onDelete }: SongCardProps) {
                 </Text>
               </View>
             )}
-            {!!song.genre && (
+            {visibleTags.map((tag) => (
               <View
-                style={[styles.genreBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                key={tag}
+                style={[
+                  styles.tagBadge,
+                  {
+                    backgroundColor: colors.secondary,
+                    borderColor: colors.border,
+                  },
+                ]}
               >
-                <Text style={[styles.genreText, { color: colors.secondaryForeground }]}>
-                  {song.genre}
+                <Text
+                  style={[styles.tagText, { color: colors.secondaryForeground }]}
+                >
+                  {tag}
                 </Text>
               </View>
+            ))}
+            {extraTagCount > 0 && (
+              <Text style={[styles.tempo, { color: colors.mutedForeground }]}>
+                +{extraTagCount}
+              </Text>
             )}
             {!!song.tempo && (
               <Text style={[styles.tempo, { color: colors.mutedForeground }]}>
@@ -92,8 +110,11 @@ export function SongCard({ song, onDelete }: SongCardProps) {
         </View>
         <View style={styles.right}>
           <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+            {relativeTime(song.updatedAt)}
+          </Text>
           {lineCount > 0 && (
-            <Text style={[styles.lineCount, { color: colors.mutedForeground }]}>
+            <Text style={[styles.meta, { color: colors.mutedForeground }]}>
               {lineCount} lines
             </Text>
           )}
@@ -121,8 +142,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   right: {
-    alignItems: "center",
-    gap: 4,
+    alignItems: "flex-end",
+    gap: 2,
+    minWidth: 60,
   },
   title: {
     fontSize: 16,
@@ -135,6 +157,7 @@ const styles = StyleSheet.create({
   tags: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 6,
     marginTop: 2,
   },
@@ -148,13 +171,13 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.5,
   },
-  genreBadge: {
+  tagBadge: {
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderWidth: 1,
   },
-  genreText: {
+  tagText: {
     fontSize: 11,
     fontFamily: "Inter_400Regular",
   },
@@ -162,9 +185,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "Inter_400Regular",
   },
-  lineCount: {
+  meta: {
     fontSize: 11,
     fontFamily: "Inter_400Regular",
-    marginTop: 2,
   },
 });

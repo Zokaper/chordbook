@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
+  ActionSheetIOS,
   Alert,
   FlatList,
   Platform,
@@ -15,41 +16,60 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SongCard } from "@/components/SongCard";
+import { useSettings, type SortBy } from "@/context/SettingsContext";
 import { Song, useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
 
-const GENRES = [
-  "All",
-  "Rock",
-  "Pop",
-  "Folk",
-  "Blues",
-  "Jazz",
-  "Country",
-  "R&B",
-  "Metal",
-  "Indie",
-  "Other",
-];
+const SORT_LABELS: Record<SortBy, string> = {
+  recent: "Recent",
+  title: "Title",
+  artist: "Artist",
+};
 
 export default function LibraryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { songs, deleteSong, loading } = useSongs();
+  const { songs, deleteSong, loading, allTags } = useSongs();
+  const { settings, setSortBy } = useSettings();
   const [search, setSearch] = useState("");
-  const [activeGenre, setActiveGenre] = useState("All");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  const filtered = songs.filter((s: Song) => {
-    const matchesSearch =
-      !search ||
-      s.title.toLowerCase().includes(search.toLowerCase()) ||
-      s.artist.toLowerCase().includes(search.toLowerCase());
-    const matchesGenre = activeGenre === "All" || s.genre === activeGenre;
-    return matchesSearch && matchesGenre;
-  });
+  const filtered = useMemo(() => {
+    const result = songs.filter((s: Song) => {
+      const q = search.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        s.title.toLowerCase().includes(q) ||
+        s.artist.toLowerCase().includes(q) ||
+        s.tags.some((t) => t.toLowerCase().includes(q));
+      const matchesTag = !activeTag || s.tags.includes(activeTag);
+      return matchesSearch && matchesTag;
+    });
+    const sorted = [...result];
+    switch (settings.sortBy) {
+      case "title":
+        sorted.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case "artist":
+        sorted.sort((a, b) => {
+          if (!a.artist && !b.artist) return 0;
+          if (!a.artist) return 1;
+          if (!b.artist) return -1;
+          return a.artist.localeCompare(b.artist);
+        });
+        break;
+      case "recent":
+      default:
+        sorted.sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+    }
+    return sorted;
+  }, [songs, search, activeTag, settings.sortBy]);
 
   const handleDelete = (id: string) => {
     Alert.alert("Delete Song", "Are you sure you want to delete this song?", [
@@ -68,6 +88,30 @@ export default function LibraryScreen() {
   const handleCreate = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push("/editor");
+  };
+
+  const openSortMenu = () => {
+    const order: SortBy[] = ["recent", "title", "artist"];
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [...order.map((o) => `Sort by ${SORT_LABELS[o]}`), "Cancel"],
+          cancelButtonIndex: order.length,
+          title: "Sort songs",
+        },
+        (idx) => {
+          if (idx >= 0 && idx < order.length) setSortBy(order[idx]);
+        }
+      );
+    } else {
+      Alert.alert("Sort songs", undefined, [
+        ...order.map((o) => ({
+          text: `Sort by ${SORT_LABELS[o]}`,
+          onPress: () => setSortBy(o),
+        })),
+        { text: "Cancel", style: "cancel" as const },
+      ]);
+    }
   };
 
   return (
@@ -90,19 +134,33 @@ export default function LibraryScreen() {
               {songs.length} {songs.length === 1 ? "song" : "songs"}
             </Text>
           </View>
-          <Pressable
-            onPress={handleCreate}
-            style={({ pressed }) => [
-              styles.addButton,
-              {
-                backgroundColor: colors.primary,
-                opacity: pressed ? 0.8 : 1,
-                transform: [{ scale: pressed ? 0.95 : 1 }],
-              },
-            ]}
-          >
-            <Feather name="plus" size={22} color={colors.primaryForeground} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={openSortMenu}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                {
+                  backgroundColor: colors.secondary,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Feather name="sliders" size={18} color={colors.foreground} />
+            </Pressable>
+            <Pressable
+              onPress={handleCreate}
+              style={({ pressed }) => [
+                styles.addButton,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: pressed ? 0.8 : 1,
+                  transform: [{ scale: pressed ? 0.95 : 1 }],
+                },
+              ]}
+            >
+              <Feather name="plus" size={22} color={colors.primaryForeground} />
+            </Pressable>
+          </View>
         </View>
 
         <View
@@ -114,7 +172,7 @@ export default function LibraryScreen() {
           <Feather name="search" size={16} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground }]}
-            placeholder="Search songs..."
+            placeholder="Search title, artist, or tag..."
             placeholderTextColor={colors.mutedForeground}
             value={search}
             onChangeText={setSearch}
@@ -131,45 +189,47 @@ export default function LibraryScreen() {
           )}
         </View>
 
-        <FlatList
-          data={GENRES}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(g) => g}
-          contentContainerStyle={styles.genreList}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => setActiveGenre(item)}
-              style={[
-                styles.genreChip,
-                {
-                  backgroundColor:
-                    activeGenre === item ? colors.primary : colors.secondary,
-                  borderColor:
-                    activeGenre === item ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.genreChipText,
-                  {
-                    color:
-                      activeGenre === item
-                        ? colors.primaryForeground
-                        : colors.secondaryForeground,
-                    fontFamily:
-                      activeGenre === item
-                        ? "Inter_600SemiBold"
-                        : "Inter_400Regular",
-                  },
-                ]}
-              >
-                {item}
-              </Text>
-            </Pressable>
-          )}
-        />
+        {allTags.length > 0 && (
+          <FlatList
+            data={["All", ...allTags]}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(g) => g}
+            contentContainerStyle={styles.tagList}
+            renderItem={({ item }) => {
+              const isAll = item === "All";
+              const active = isAll ? activeTag === null : activeTag === item;
+              return (
+                <Pressable
+                  onPress={() => setActiveTag(isAll ? null : item)}
+                  style={[
+                    styles.tagChip,
+                    {
+                      backgroundColor: active ? colors.primary : colors.secondary,
+                      borderColor: active ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.tagChipText,
+                      {
+                        color: active
+                          ? colors.primaryForeground
+                          : colors.secondaryForeground,
+                        fontFamily: active
+                          ? "Inter_600SemiBold"
+                          : "Inter_400Regular",
+                      },
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                </Pressable>
+              );
+            }}
+          />
+        )}
       </View>
 
       <FlatList
@@ -201,8 +261,28 @@ export default function LibraryScreen() {
                 <Text
                   style={[styles.emptyText, { color: colors.mutedForeground }]}
                 >
-                  Tap the + button to add your first song
+                  Start building your personal library
                 </Text>
+                <Pressable
+                  onPress={handleCreate}
+                  style={({ pressed }) => [
+                    styles.emptyCta,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  <Feather name="plus" size={16} color={colors.primaryForeground} />
+                  <Text
+                    style={[
+                      styles.emptyCtaText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    Add your first song
+                  </Text>
+                </Pressable>
               </>
             ) : (
               <>
@@ -216,6 +296,18 @@ export default function LibraryScreen() {
                 >
                   No results found
                 </Text>
+                {(activeTag || search) && (
+                  <Pressable
+                    onPress={() => {
+                      setActiveTag(null);
+                      setSearch("");
+                    }}
+                  >
+                    <Text style={[styles.emptyText, { color: colors.primary }]}>
+                      Clear filters
+                    </Text>
+                  </Pressable>
+                )}
               </>
             )}
           </View>
@@ -240,6 +332,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   appName: {
     fontSize: 28,
     fontFamily: "Inter_700Bold",
@@ -249,6 +346,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     marginTop: 2,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
   addButton: {
     width: 44,
@@ -271,17 +375,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_400Regular",
   },
-  genreList: {
+  tagList: {
     gap: 8,
     paddingBottom: 2,
   },
-  genreChip: {
+  tagChip: {
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderWidth: 1,
   },
-  genreChipText: {
+  tagChipText: {
     fontSize: 13,
   },
   list: {
@@ -302,5 +406,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
+  },
+  emptyCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    marginTop: 8,
+  },
+  emptyCtaText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
 });

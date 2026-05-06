@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -13,7 +14,7 @@ export interface Song {
   artist: string;
   key: string;
   tempo: string;
-  genre: string;
+  tags: string[];
   content: string;
   createdAt: string;
   updatedAt: string;
@@ -22,6 +23,7 @@ export interface Song {
 interface SongContextValue {
   songs: Song[];
   loading: boolean;
+  allTags: string[];
   createSong: (
     data: Omit<Song, "id" | "createdAt" | "updatedAt">
   ) => Promise<Song>;
@@ -31,11 +33,39 @@ interface SongContextValue {
   ) => Promise<void>;
   deleteSong: (id: string) => Promise<void>;
   getSong: (id: string) => Song | undefined;
+  clearAllSongs: () => Promise<void>;
 }
 
 const SongContext = createContext<SongContextValue | null>(null);
 
 const STORAGE_KEY = "songbook_songs_v1";
+
+type RawSong = Partial<Song> & { genre?: string };
+
+function migrate(raw: unknown): { songs: Song[]; changed: boolean } {
+  if (!Array.isArray(raw)) return { songs: [], changed: false };
+  let changed = false;
+  const songs = (raw as RawSong[]).map((s) => {
+    let tags = Array.isArray(s.tags) ? s.tags.filter(Boolean) : undefined;
+    if (!tags) {
+      tags = s.genre ? [s.genre] : [];
+      changed = true;
+    }
+    const { genre: _genre, ...rest } = s;
+    return {
+      id: rest.id ?? Date.now().toString() + Math.random().toString(36).slice(2, 7),
+      title: rest.title ?? "",
+      artist: rest.artist ?? "",
+      key: rest.key ?? "",
+      tempo: rest.tempo ?? "",
+      tags,
+      content: rest.content ?? "",
+      createdAt: rest.createdAt ?? new Date().toISOString(),
+      updatedAt: rest.updatedAt ?? rest.createdAt ?? new Date().toISOString(),
+    } as Song;
+  });
+  return { songs, changed };
+}
 
 export function SongProvider({ children }: { children: React.ReactNode }) {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -49,7 +79,11 @@ export function SongProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
-        setSongs(JSON.parse(raw));
+        const { songs: migrated, changed } = migrate(JSON.parse(raw));
+        setSongs(migrated);
+        if (changed) {
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        }
       }
     } catch (e) {
       console.error("Failed to load songs", e);
@@ -68,6 +102,7 @@ export function SongProvider({ children }: { children: React.ReactNode }) {
       const now = new Date().toISOString();
       const song: Song = {
         ...data,
+        tags: data.tags ?? [],
         id:
           Date.now().toString() + Math.random().toString(36).substring(2, 9),
         createdAt: now,
@@ -108,9 +143,28 @@ export function SongProvider({ children }: { children: React.ReactNode }) {
     [songs]
   );
 
+  const clearAllSongs = useCallback(async () => {
+    await saveSongs([]);
+  }, []);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of songs) for (const t of s.tags) if (t) set.add(t);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [songs]);
+
   return (
     <SongContext.Provider
-      value={{ songs, loading, createSong, updateSong, deleteSong, getSong }}
+      value={{
+        songs,
+        loading,
+        allTags,
+        createSong,
+        updateSong,
+        deleteSong,
+        getSong,
+        clearAllSongs,
+      }}
     >
       {children}
     </SongContext.Provider>

@@ -174,8 +174,9 @@ export default function SongScreen() {
                 </Text>
               </View>
             )}
-            {!!song.genre && (
+            {song.tags.map((tag) => (
               <View
+                key={tag}
                 style={[
                   styles.badge,
                   {
@@ -187,10 +188,10 @@ export default function SongScreen() {
                 <Text
                   style={[styles.badgeText, { color: colors.secondaryForeground }]}
                 >
-                  {song.genre}
+                  {tag}
                 </Text>
               </View>
-            )}
+            ))}
             {!!song.tempo && (
               <View
                 style={[

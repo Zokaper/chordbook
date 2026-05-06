@@ -13,7 +13,7 @@ A personal mobile songbook app where musicians create and store their own songs 
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - Mobile: Expo (SDK 54) + Expo Router, React Native 0.81
-- State: AsyncStorage (local persistence), React Context
+- State: AsyncStorage (local persistence), React Context (Song / Chord / Settings)
 - Fonts: Inter (400/500/600/700) via @expo-google-fonts/inter
 - Icons: @expo/vector-icons (Feather)
 - Haptics: expo-haptics
@@ -22,20 +22,25 @@ A personal mobile songbook app where musicians create and store their own songs 
 ## Where things live
 
 - `artifacts/songbook/` — Expo mobile app
-- `artifacts/songbook/context/SongContext.tsx` — Song CRUD + AsyncStorage
+- `artifacts/songbook/context/SongContext.tsx` — Song CRUD + tags array + AsyncStorage (with genre→tags migration)
 - `artifacts/songbook/context/ChordContext.tsx` — Chord library CRUD + AsyncStorage
-- `artifacts/songbook/components/SongCard.tsx` — Library list item
+- `artifacts/songbook/context/SettingsContext.tsx` — Theme + sort prefs + AsyncStorage
+- `artifacts/songbook/hooks/useColors.ts` — Color tokens (honors theme override from SettingsContext)
+- `artifacts/songbook/components/SongCard.tsx` — Library list item with tags + relative date
+- `artifacts/songbook/components/TagsField.tsx` — Reusable tag input (chips + suggestions from library)
 - `artifacts/songbook/components/ChordDiagram.tsx` — Read-only SVG chord diagram
 - `artifacts/songbook/components/ChordDiagramEditor.tsx` — Interactive SVG chord diagram (touch to place dots)
 - `artifacts/songbook/components/ChordCard.tsx` — Card for chord library grid
 - `artifacts/songbook/components/ChordViewer.tsx` — Chord/tab renderer
-- `artifacts/songbook/app/(tabs)/index.tsx` — Library screen
+- `artifacts/songbook/components/StructuredEditor.tsx` — Section-based song editor (chord chips, lyrics, strum grid, riff tabs, note annotations)
+- `artifacts/songbook/utils/relativeTime.ts` — "2h ago" / "yesterday" / "Mar 5" formatter
+- `artifacts/songbook/app/(tabs)/index.tsx` — Library screen (search, tag filter, sort menu)
 - `artifacts/songbook/app/(tabs)/chords.tsx` — Chord library screen
+- `artifacts/songbook/app/(tabs)/settings.tsx` — Theme, sort, stats, danger zone
 - `artifacts/songbook/app/song/[id].tsx` — Song viewer
 - `artifacts/songbook/app/editor.tsx` — Song create/edit screen (uses StructuredEditor)
-- `artifacts/songbook/components/StructuredEditor.tsx` — Section-based song editor (chord chips, lyrics, strum grid, riff tabs, note annotations)
 - `artifacts/songbook/app/chord-editor.tsx` — Chord diagram builder screen
-- `artifacts/songbook/constants/colors.ts` — Design tokens (warm amber/brown theme)
+- `artifacts/songbook/constants/colors.ts` — Design tokens (warm amber/brown light + dark themes)
 
 ## Architecture decisions
 
@@ -48,18 +53,21 @@ A personal mobile songbook app where musicians create and store their own songs 
 - StrumBeat cycle: `-` → `D` → `U` → `DU` → `x` (tap to advance in editor)
 - ChordDiagramEditor: two-layer approach — bottom SVG draws everything (grid + dots + ghost dot), transparent Pressable cells rendered on top capture all touches. No `pointerEvents` prop or style needed.
 - ChordDiagramEditor uses relative fret positions; strings[] stores actual fret numbers, display computed as relFret = fret - baseFret + 1
+- Tags (not genres): user-defined free-text array per song. Auto-migrates legacy `genre: string` field on first load. Tag suggestions in editor + library filter come from union of all songs' tags.
+- Theme override: SettingsContext stores user preference ("system" | "light" | "dark"), useColors honors it; SettingsProvider wraps the entire app above ChordProvider/SongProvider so every screen reacts.
 
 ## Product
 
-- Library screen with search and genre filter
-- Song cards showing title, artist, key badge, genre, and tempo
+- Library screen with search (title/artist/tag), tag filter chips, sort menu (recent/title/artist), and pull-to-create empty state
+- Song cards showing title, artist, key badge, tags (up to 3), tempo, line count, and "edited X ago"
 - Song viewer with syntax-highlighted chord/tab display (section headers, chord lines, lyrics)
-- Song editor with title, artist, key selector, tempo, genre, and section-based content
+- Song editor with title, artist, key selector, tempo, free-form tags, and section-based content
 - Five line types per section: **Chords** (amber chips), **Lyrics** (text), **Strum** (8-beat D/U grid), **Riff** (6-string visual tap grid → fret picker 0–9), **Note** (italic annotation)
-- Long-press to delete from library
+- Long-press to delete from library; explicit confirm dialog
 - **Chord library tab** — personal chord collection in a 2-column grid
 - **Interactive chord diagram builder** — tap frets to place fingers, toggle muted/open strings, add barre, shift fret position
 - **Chord palette in song editor** — toggle to show saved chords; tap to insert chord name at cursor
+- **Settings tab** — theme picker (system/light/dark), default sort, library stats, "Delete all songs" danger zone
 
 ## User preferences
 
@@ -73,6 +81,8 @@ _Populate as you build._
 - NEVER use `pointerEvents` in `StyleSheet.create()` — it throws at module load time in React Native Web, causing a blank screen. Use render order instead (elements rendered later have higher z-index).
 - NEVER use `pointerEvents` as a View prop on web — deprecated, causes warnings. Avoid entirely by using render order.
 - strings[] index 0 = low E (leftmost in diagram), index 5 = high e (rightmost)
+- `useColors` depends on `SettingsContext` — keep `SettingsProvider` ABOVE every other provider/component that calls it (it falls back to defaults if missing, but that defeats the user theme override).
+- Song schema migration runs on every load: if storage has any legacy `genre: string` field it's converted to `tags: [genre]` and re-persisted automatically.
 
 ## Pointers
 

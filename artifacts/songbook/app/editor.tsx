@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { StructuredEditor } from "@/components/StructuredEditor";
+import { TagsField } from "@/components/TagsField";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -26,16 +27,11 @@ const KEYS = [
   "Am", "Bm", "Cm", "Dm", "Em", "Fm", "Gm", "G#m", "Abm", "Bbm",
 ];
 
-const GENRES = [
-  "Rock", "Pop", "Folk", "Blues", "Jazz",
-  "Country", "R&B", "Metal", "Indie", "Other",
-];
-
 export default function EditorScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { getSong, createSong, updateSong, deleteSong } = useSongs();
+  const { getSong, createSong, updateSong, deleteSong, allTags } = useSongs();
   const isEdit = !!id;
   const existingSong = id ? getSong(id) : undefined;
 
@@ -43,7 +39,7 @@ export default function EditorScreen() {
   const [artist, setArtist] = useState(existingSong?.artist ?? "");
   const [songKey, setSongKey] = useState(existingSong?.key ?? "");
   const [tempo, setTempo] = useState(existingSong?.tempo ?? "");
-  const [genre, setGenre] = useState(existingSong?.genre ?? "");
+  const [tags, setTags] = useState<string[]>(existingSong?.tags ?? []);
   const [content, setContent] = useState(existingSong?.content ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -61,7 +57,7 @@ export default function EditorScreen() {
         artist: artist.trim(),
         key: songKey,
         tempo: tempo.trim(),
-        genre,
+        tags,
         content,
       };
       if (isEdit && id) {
@@ -271,72 +267,40 @@ export default function EditorScreen() {
           />
         </View>
 
-        {/* Tempo + Genre row */}
-        <View style={styles.metaRow}>
-          <View style={[styles.field, { flex: 1, maxWidth: 140 }]}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              Tempo (BPM)
-            </Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  color: colors.foreground,
-                  backgroundColor: colors.secondary,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder="120"
-              placeholderTextColor={colors.mutedForeground}
-              value={tempo}
-              onChangeText={setTempo}
-              keyboardType="numeric"
-              returnKeyType="done"
-            />
-          </View>
+        {/* Tempo */}
+        <View style={[styles.field, { maxWidth: 160 }]}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Tempo (BPM)
+          </Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                color: colors.foreground,
+                backgroundColor: colors.secondary,
+                borderColor: colors.border,
+              },
+            ]}
+            placeholder="120"
+            placeholderTextColor={colors.mutedForeground}
+            value={tempo}
+            onChangeText={setTempo}
+            keyboardType="numeric"
+            returnKeyType="done"
+          />
+        </View>
 
-          <View style={[styles.field, { flex: 1 }]}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              Genre
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipRow}
-            >
-              {GENRES.map((g) => (
-                <Pressable
-                  key={g}
-                  onPress={() => setGenre(genre === g ? "" : g)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor:
-                        genre === g ? colors.primary : colors.secondary,
-                      borderColor:
-                        genre === g ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      {
-                        color:
-                          genre === g
-                            ? colors.primaryForeground
-                            : colors.secondaryForeground,
-                        fontFamily:
-                          genre === g ? "Inter_700Bold" : "Inter_400Regular",
-                      },
-                    ]}
-                  >
-                    {g}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
+        {/* Tags */}
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Tags
+          </Text>
+          <TagsField
+            value={tags}
+            onChange={setTags}
+            suggestions={allTags}
+            placeholder="Add a tag (e.g. acoustic, christmas)"
+          />
         </View>
 
         {/* Divider */}
