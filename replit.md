@@ -33,7 +33,7 @@ A personal mobile songbook app where musicians create and store their own songs 
 - `artifacts/songbook/app/(tabs)/chords.tsx` — Chord library screen
 - `artifacts/songbook/app/song/[id].tsx` — Song viewer
 - `artifacts/songbook/app/editor.tsx` — Song create/edit screen (uses StructuredEditor)
-- `artifacts/songbook/components/StructuredEditor.tsx` — Section-based song editor (chord chips + lyric lines)
+- `artifacts/songbook/components/StructuredEditor.tsx` — Section-based song editor (chord chips, lyrics, strum grid, riff tabs, note annotations)
 - `artifacts/songbook/app/chord-editor.tsx` — Chord diagram builder screen
 - `artifacts/songbook/constants/colors.ts` — Design tokens (warm amber/brown theme)
 
@@ -43,7 +43,9 @@ A personal mobile songbook app where musicians create and store their own songs 
 - Song content is free-form text; ChordViewer parses lines at render time (section headers, chord lines, tab lines, lyrics)
 - Editor opens as a modal (presentation: "modal") for focused creation flow
 - Chord line detection: a line is a chord line if every whitespace-separated token matches the chord regex
-- Tab lines detected by leading string pattern (e|, A|, D|, etc.)
+- Tab/riff lines detected by leading string pattern (e|, A|, D|, etc.)
+- Strum lines serialized as `STRUM:D,U,-,DU,x,...` (8 beats); Note lines as `NOTE:text`
+- StrumBeat cycle: `-` → `D` → `U` → `DU` → `x` (tap to advance in editor)
 - ChordDiagramEditor: two-layer approach — bottom SVG draws everything (grid + dots + ghost dot), transparent Pressable cells rendered on top capture all touches. No `pointerEvents` prop or style needed.
 - ChordDiagramEditor uses relative fret positions; strings[] stores actual fret numbers, display computed as relFret = fret - baseFret + 1
 
@@ -52,7 +54,8 @@ A personal mobile songbook app where musicians create and store their own songs 
 - Library screen with search and genre filter
 - Song cards showing title, artist, key badge, genre, and tempo
 - Song viewer with syntax-highlighted chord/tab display (section headers, chord lines, lyrics)
-- Song editor with title, artist, key selector, tempo, genre, and free-form chord/lyric content
+- Song editor with title, artist, key selector, tempo, genre, and section-based content
+- Five line types per section: **Chords** (amber chips), **Lyrics** (text), **Strum** (8-beat D/U grid), **Riff** (tab text), **Note** (italic annotation)
 - Long-press to delete from library
 - **Chord library tab** — personal chord collection in a 2-column grid
 - **Interactive chord diagram builder** — tap frets to place fingers, toggle muted/open strings, add barre, shift fret position
