@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Platform,
@@ -18,11 +18,13 @@ import { ChordDiagramEditor } from "@/components/ChordDiagramEditor";
 import { ChordFingering, useChords } from "@/context/ChordContext";
 import { useColors } from "@/hooks/useColors";
 
-const EMPTY_STRINGS: number[] = [0, 0, 0, 0, 0, 0];
-
 type EditorState = Pick<ChordFingering, "strings" | "baseFret" | "barre">;
 
-const STRING_LABELS = ["E", "A", "D", "G", "B", "e"];
+const EMPTY: EditorState = {
+  strings: [0, 0, 0, 0, 0, 0],
+  baseFret: 1,
+  barre: undefined,
+};
 
 export default function ChordEditorScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -34,17 +36,19 @@ export default function ChordEditorScreen() {
   const isEdit = !!existing;
 
   const [name, setName] = useState(existing?.name ?? "");
-  const [state, setState] = useState<EditorState>({
-    strings: existing?.strings ?? [...EMPTY_STRINGS],
-    baseFret: existing?.baseFret ?? 1,
-    barre: existing?.barre,
-  });
+  const [state, setState] = useState<EditorState>(
+    existing
+      ? { strings: existing.strings, baseFret: existing.baseFret, barre: existing.barre }
+      : EMPTY
+  );
   const [saving, setSaving] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
-
   const canSave = name.trim().length > 0;
+
+  // Diagram fills the screen width minus padding
+  const diagramWidth = Math.min(320, (Platform.OS === "web" ? 390 : 420) - 32);
 
   const handleSave = async () => {
     if (!canSave || saving) return;
@@ -59,7 +63,7 @@ export default function ChordEditorScreen() {
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
-    } catch (e) {
+    } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setSaving(false);
@@ -82,56 +86,43 @@ export default function ChordEditorScreen() {
     ]);
   };
 
-  const handleClear = () => {
-    setState((s) => ({
-      ...s,
-      strings: [...EMPTY_STRINGS],
-      barre: undefined,
-    }));
-  };
-
   const shiftFret = (delta: number) => {
     setState((s) => {
       const newBase = Math.max(1, Math.min(12, s.baseFret + delta));
+      if (newBase === s.baseFret) return s;
       const diff = newBase - s.baseFret;
-      const newStrings = s.strings.map((v) =>
-        v > 0 ? Math.max(1, v + diff) : v
-      );
+      const newStrings = s.strings.map((v) => (v > 0 ? Math.max(1, v + diff) : v));
       const newBarre = s.barre
         ? { ...s.barre, fret: Math.max(1, s.barre.fret + diff) }
         : undefined;
-      return { ...s, baseFret: newBase, strings: newStrings, barre: newBarre };
+      return { baseFret: newBase, strings: newStrings, barre: newBarre };
     });
   };
 
   const toggleBarre = () => {
     setState((s) => {
-      if (s.barre) {
-        return { ...s, barre: undefined };
-      }
-      return {
-        ...s,
-        barre: { fret: s.baseFret, from: 0, to: 5 },
-      };
+      if (s.barre) return { ...s, barre: undefined };
+      return { ...s, barre: { fret: s.baseFret, from: 0, to: 5 } };
     });
   };
 
-  const barreShift = (delta: number) => {
-    if (!state.barre) return;
+  const shiftBarreFret = (delta: number) => {
     setState((s) => {
       if (!s.barre) return s;
-      const newFret = Math.max(s.baseFret, Math.min(s.baseFret + 3, s.barre.fret + delta));
+      const newFret = Math.max(s.baseFret, Math.min(s.baseFret + NUM_FRETS - 1, s.barre.fret + delta));
       return { ...s, barre: { ...s.barre, fret: newFret } };
     });
   };
 
-  const diagramWidth = Math.min(280, Platform.OS === "web" ? 280 : 300);
+  const handleClear = () => {
+    setState((s) => ({ ...s, strings: [0, 0, 0, 0, 0, 0], barre: undefined }));
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Header */}
+      {/* ── Header ── */}
       <View
         style={[
           styles.header,
@@ -154,8 +145,11 @@ export default function ChordEditorScreen() {
           </Pressable>
 
           <TextInput
-            style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border }]}
-            placeholder="Chord name (e.g. Am7)"
+            style={[
+              styles.nameInput,
+              { color: colors.foreground, borderColor: colors.primary },
+            ]}
+            placeholder="Name (e.g. Am7, G, Fmaj9)"
             placeholderTextColor={colors.mutedForeground}
             value={name}
             onChangeText={setName}
@@ -194,7 +188,7 @@ export default function ChordEditorScreen() {
                   { color: canSave ? colors.primaryForeground : colors.mutedForeground },
                 ]}
               >
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving…" : "Save"}
               </Text>
             </Pressable>
           </View>
@@ -202,31 +196,15 @@ export default function ChordEditorScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingBottom: bottomPadding + 40 },
-        ]}
+        contentContainerStyle={[styles.body, { paddingBottom: bottomPadding + 40 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* String labels */}
-        <View style={[styles.stringLabels, { width: diagramWidth }]}>
-          {STRING_LABELS.map((lbl, i) => (
-            <View key={i} style={styles.stringLabelWrap}>
-              <Text style={[styles.stringLabel, { color: colors.mutedForeground }]}>
-                {lbl}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Interactive Diagram */}
+        {/* ── Interactive Diagram ── */}
         <View
           style={[
-            styles.diagramWrap,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            },
+            styles.diagramCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
           <ChordDiagramEditor
@@ -240,62 +218,59 @@ export default function ChordEditorScreen() {
           />
         </View>
 
-        {/* Hint */}
         <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          Tap a fret to place a finger · Tap the top row to mute/unmute a string
+          Tap a fret to place a finger · Tap a string name to mute it
         </Text>
 
-        {/* Controls */}
+        {/* ── Controls ── */}
         <View style={styles.controls}>
 
-          {/* Fret navigation */}
-          <View style={styles.controlGroup}>
-            <Text style={[styles.controlLabel, { color: colors.mutedForeground }]}>
-              POSITION
-            </Text>
-            <View style={styles.controlRow}>
+          {/* Fret Position */}
+          <View style={[styles.controlRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.controlTitle, { color: colors.mutedForeground }]}>Position</Text>
+            <View style={styles.controlInner}>
               <Pressable
                 onPress={() => shiftFret(-1)}
                 disabled={state.baseFret <= 1}
                 style={({ pressed }) => [
-                  styles.controlBtn,
+                  styles.stepBtn,
                   {
                     backgroundColor: colors.secondary,
                     borderColor: colors.border,
-                    opacity: state.baseFret <= 1 ? 0.4 : pressed ? 0.7 : 1,
+                    opacity: state.baseFret <= 1 ? 0.3 : pressed ? 0.7 : 1,
                   },
                 ]}
               >
-                <Feather name="chevron-left" size={18} color={colors.foreground} />
+                <Feather name="chevron-left" size={20} color={colors.foreground} />
               </Pressable>
-              <View style={[styles.fretDisplay, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                <Text style={[styles.fretDisplayText, { color: colors.foreground }]}>
+
+              <View style={[styles.valueDisplay, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                <Text style={[styles.valueText, { color: colors.foreground }]}>
                   {state.baseFret === 1 ? "Open" : `Fret ${state.baseFret}`}
                 </Text>
               </View>
+
               <Pressable
                 onPress={() => shiftFret(1)}
                 disabled={state.baseFret >= 12}
                 style={({ pressed }) => [
-                  styles.controlBtn,
+                  styles.stepBtn,
                   {
                     backgroundColor: colors.secondary,
                     borderColor: colors.border,
-                    opacity: state.baseFret >= 12 ? 0.4 : pressed ? 0.7 : 1,
+                    opacity: state.baseFret >= 12 ? 0.3 : pressed ? 0.7 : 1,
                   },
                 ]}
               >
-                <Feather name="chevron-right" size={18} color={colors.foreground} />
+                <Feather name="chevron-right" size={20} color={colors.foreground} />
               </Pressable>
             </View>
           </View>
 
-          {/* Barre toggle */}
-          <View style={styles.controlGroup}>
-            <Text style={[styles.controlLabel, { color: colors.mutedForeground }]}>
-              BARRE
-            </Text>
-            <View style={styles.controlRow}>
+          {/* Barre */}
+          <View style={[styles.controlRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.controlTitle, { color: colors.mutedForeground }]}>Barre</Text>
+            <View style={styles.controlInner}>
               <Pressable
                 onPress={toggleBarre}
                 style={({ pressed }) => [
@@ -310,44 +285,39 @@ export default function ChordEditorScreen() {
                 <Feather
                   name={state.barre ? "check-square" : "square"}
                   size={16}
-                  color={state.barre ? colors.primaryForeground : colors.foreground}
+                  color={state.barre ? colors.primaryForeground : colors.mutedForeground}
                 />
-                <Text
-                  style={[
-                    styles.barreToggleText,
-                    { color: state.barre ? colors.primaryForeground : colors.foreground },
-                  ]}
-                >
-                  {state.barre ? "Barre On" : "Add Barre"}
+                <Text style={[styles.barreLabel, { color: state.barre ? colors.primaryForeground : colors.foreground }]}>
+                  {state.barre ? "On" : "Off"}
                 </Text>
               </Pressable>
 
               {state.barre && (
-                <View style={styles.controlRow}>
+                <>
                   <Pressable
-                    onPress={() => barreShift(-1)}
+                    onPress={() => shiftBarreFret(-1)}
                     style={({ pressed }) => [
-                      styles.controlBtn,
+                      styles.stepBtn,
                       { backgroundColor: colors.secondary, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
                     ]}
                   >
-                    <Feather name="chevron-left" size={18} color={colors.foreground} />
+                    <Feather name="chevron-left" size={20} color={colors.foreground} />
                   </Pressable>
-                  <View style={[styles.fretDisplay, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                    <Text style={[styles.fretDisplayText, { color: colors.foreground }]}>
+                  <View style={[styles.valueDisplay, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                    <Text style={[styles.valueText, { color: colors.foreground }]}>
                       Fret {state.barre.fret}
                     </Text>
                   </View>
                   <Pressable
-                    onPress={() => barreShift(1)}
+                    onPress={() => shiftBarreFret(1)}
                     style={({ pressed }) => [
-                      styles.controlBtn,
+                      styles.stepBtn,
                       { backgroundColor: colors.secondary, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
                     ]}
                   >
-                    <Feather name="chevron-right" size={18} color={colors.foreground} />
+                    <Feather name="chevron-right" size={20} color={colors.foreground} />
                   </Pressable>
-                </View>
+                </>
               )}
             </View>
           </View>
@@ -364,7 +334,7 @@ export default function ChordEditorScreen() {
               },
             ]}
           >
-            <Feather name="refresh-ccw" size={16} color={colors.mutedForeground} />
+            <Feather name="refresh-ccw" size={15} color={colors.mutedForeground} />
             <Text style={[styles.clearBtnText, { color: colors.mutedForeground }]}>
               Clear diagram
             </Text>
@@ -374,6 +344,8 @@ export default function ChordEditorScreen() {
     </View>
   );
 }
+
+const NUM_FRETS = 4;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -398,12 +370,13 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   nameInput: {
     flex: 1,
-    fontSize: 20,
+    fontSize: 19,
     fontFamily: "Inter_600SemiBold",
-    borderBottomWidth: 1.5,
+    borderBottomWidth: 2,
     paddingVertical: 4,
     paddingHorizontal: 2,
   },
@@ -411,102 +384,94 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 18,
     paddingVertical: 8,
+    flexShrink: 0,
   },
   saveBtnText: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
-  scroll: {
+  body: {
     alignItems: "center",
     paddingTop: 24,
     paddingHorizontal: 16,
     gap: 16,
   },
-  stringLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 10,
-  },
-  stringLabelWrap: {
-    alignItems: "center",
-  },
-  stringLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-    letterSpacing: 0.5,
-  },
-  diagramWrap: {
+  diagramCard: {
     borderRadius: 20,
     borderWidth: 1,
-    padding: 12,
+    padding: 16,
     alignItems: "center",
   },
   hint: {
     fontSize: 12,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
   },
   controls: {
     width: "100%",
-    gap: 20,
-    marginTop: 8,
-  },
-  controlGroup: {
-    gap: 8,
-  },
-  controlLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 1,
+    gap: 10,
   },
   controlRow: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  controlTitle: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  controlInner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     flexWrap: "wrap",
   },
-  controlBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+  stepBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  fretDisplay: {
-    borderRadius: 10,
+  valueDisplay: {
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    minWidth: 90,
+    minWidth: 100,
     alignItems: "center",
   },
-  fretDisplayText: {
-    fontSize: 14,
+  valueText: {
+    fontSize: 15,
     fontFamily: "Inter_600SemiBold",
   },
   barreToggle: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  barreToggleText: {
-    fontSize: 14,
+  barreLabel: {
+    fontSize: 15,
     fontFamily: "Inter_500Medium",
   },
   clearBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignSelf: "flex-start",
   },
   clearBtnText: {

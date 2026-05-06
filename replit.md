@@ -43,7 +43,7 @@ A personal mobile songbook app where musicians create and store their own songs 
 - Editor opens as a modal (presentation: "modal") for focused creation flow
 - Chord line detection: a line is a chord line if every whitespace-separated token matches the chord regex
 - Tab lines detected by leading string pattern (e|, A|, D|, etc.)
-- Chord diagrams built with react-native-svg; touch targets are transparent Rect elements with onPress
+- ChordDiagramEditor: two-layer approach — bottom SVG draws everything (grid + dots + ghost dot), transparent Pressable cells rendered on top capture all touches. No `pointerEvents` prop or style needed.
 - ChordDiagramEditor uses relative fret positions; strings[] stores actual fret numbers, display computed as relFret = fret - baseFret + 1
 
 ## Product
@@ -66,7 +66,8 @@ _Populate as you build._
 - Do not use the `uuid` package — use `Date.now().toString() + Math.random().toString(36).substring(2, 9)` for IDs
 - ChordViewer uses a horizontal ScrollView wrapper to handle wide tab content without wrapping
 - Web platform requires manual top/bottom insets (67px top, 34px bottom)
-- ChordDiagramEditor touch targets are transparent SVG Rect elements with onPress — works on native; web may have limitations
+- NEVER use `pointerEvents` in `StyleSheet.create()` — it throws at module load time in React Native Web, causing a blank screen. Use render order instead (elements rendered later have higher z-index).
+- NEVER use `pointerEvents` as a View prop on web — deprecated, causes warnings. Avoid entirely by using render order.
 - strings[] index 0 = low E (leftmost in diagram), index 5 = high e (rightmost)
 
 ## Pointers
