@@ -34,16 +34,16 @@ export function ChordDiagram({
   const { strings, baseFret, barre, name } = chord;
 
   const layout = useMemo(() => {
-    const labelH = showLabel ? 20 : 0;
-    const markerH = 18;
+    const labelH = showLabel ? 22 : 0;
+    const markerH = 20;
     const topPad = labelH + markerH;
-    const leftPad = baseFret > 1 ? 22 : 6;
-    const rightPad = 6;
-    const bottomPad = 6;
+    const leftPad = baseFret > 1 ? 24 : 8;
+    const rightPad = 8;
+    const bottomPad = 8;
 
     const diagW = width - leftPad - rightPad;
     const stringSpacing = diagW / (NUM_STRINGS - 1);
-    const fretH = stringSpacing * 1.25;
+    const fretH = Math.round(stringSpacing * 1.35);
     const diagH = fretH * NUM_FRETS;
     const height = topPad + diagH + bottomPad;
 
@@ -59,7 +59,8 @@ export function ChordDiagram({
 
   const { labelH, topPad, diagX, diagY, diagW, height, stringSpacing, fretH, strX, fretLineY, dotCY } = layout;
 
-  const dotR = Math.max(5, stringSpacing * 0.36);
+  // Cap dot radius so dots stay well within string spacing at any size
+  const dotR = Math.max(4, Math.min(stringSpacing * 0.33, 11));
 
   return (
     <View>

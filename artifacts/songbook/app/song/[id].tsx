@@ -13,15 +13,43 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ChordDiagram } from "@/components/ChordDiagram";
 import { ChordViewer } from "@/components/ChordViewer";
+import { ChordFingering, useChords } from "@/context/ChordContext";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+
+const CHORD_TOKEN_RE =
+  /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
+
+function extractChordsUsed(
+  content: string,
+  library: ChordFingering[]
+): ChordFingering[] {
+  const seen = new Set<string>();
+  const result: ChordFingering[] = [];
+  for (const line of content.split("\n")) {
+    if (line.startsWith("[")) continue;
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length > 0 && tokens.every((t) => CHORD_TOKEN_RE.test(t))) {
+      for (const token of tokens) {
+        if (!seen.has(token)) {
+          seen.add(token);
+          const found = library.find((c) => c.name === token);
+          if (found) result.push(found);
+        }
+      }
+    }
+  }
+  return result;
+}
 
 export default function SongScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { getSong, deleteSong } = useSongs();
+  const { chords: chordLibrary } = useChords();
 
   const song = getSong(id ?? "");
 
@@ -197,6 +225,44 @@ export default function SongScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* Chord diagram strip — only shows chords from this song that are in the library */}
+        {(() => {
+          const usedChords = extractChordsUsed(song.content, chordLibrary);
+          if (usedChords.length === 0) return null;
+          return (
+            <View
+              style={[
+                styles.chordStrip,
+                { borderColor: colors.border, backgroundColor: colors.card },
+              ]}
+            >
+              <Text
+                style={[styles.chordStripLabel, { color: colors.mutedForeground }]}
+              >
+                Chords used
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chordStripRow}
+              >
+                {usedChords.map((c) => (
+                  <View key={c.id} style={styles.chordStripItem}>
+                    <ChordDiagram
+                      chord={c}
+                      width={80}
+                      showLabel
+                      primaryColor={colors.primary}
+                      textColor={colors.foreground}
+                      gridColor={colors.border}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          );
+        })()}
+
         <ChordViewer content={song.content} />
       </ScrollView>
     </View>
@@ -303,5 +369,29 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 20,
+  },
+  chordStrip: {
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+    overflow: "hidden",
+  },
+  chordStripLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  chordStripRow: {
+    paddingHorizontal: 12,
+    gap: 4,
+    flexDirection: "row",
+  },
+  chordStripItem: {
+    alignItems: "center",
   },
 });

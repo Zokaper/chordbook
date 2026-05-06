@@ -58,7 +58,8 @@ export function ChordDiagramEditor({
     const sp = diagW / (NUM_STRINGS - 1);
     const fretH = Math.round(sp * 1.45);
     const totalH = topPad + fretH * NUM_FRETS + bottomPad;
-    const dotR = Math.max(11, sp * 0.38);
+    // Cap so dots don't crowd each other at large widths
+    const dotR = Math.max(9, Math.min(sp * 0.36, 16));
     const strX = (i: number) => leftPad + i * sp;
     const fretLineY = (f: number) => topPad + f * fretH;
     const dotCY = (rel: number) => topPad + (rel - 0.5) * fretH;

@@ -124,6 +124,9 @@ export function StructuredEditor({ content, onChange }: Props) {
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
   const isFirstRender = useRef(true);
+  // Prevents onBlur from overwriting a suggestion that was tapped —
+  // onPressIn fires before onBlur, so we set this flag first.
+  const suggestionSelectedRef = useRef(false);
 
   // Sync to parent whenever sections change (skip initial mount)
   useEffect(() => {
@@ -394,6 +397,20 @@ export function StructuredEditor({ content, onChange }: Props) {
                                 onChange={(v) =>
                                   setEditingChord({ ...editingChord, value: v })
                                 }
+                                onBlur={() => {
+                                  // If the user tapped a suggestion chip,
+                                  // onPressIn already set this flag — skip commit
+                                  if (suggestionSelectedRef.current) {
+                                    suggestionSelectedRef.current = false;
+                                    return;
+                                  }
+                                  applyChordEdit(
+                                    section.id,
+                                    line.id,
+                                    idx,
+                                    editingChord.value
+                                  );
+                                }}
                                 onCommit={() =>
                                   applyChordEdit(
                                     section.id,
@@ -477,7 +494,11 @@ export function StructuredEditor({ content, onChange }: Props) {
                           {suggestions.map((name) => (
                             <Pressable
                               key={name}
-                              onPress={() => suggestChord(name)}
+                              onPressIn={() => {
+                                // Set flag BEFORE onBlur fires on the TextInput
+                                suggestionSelectedRef.current = true;
+                                suggestChord(name);
+                              }}
                               style={({ pressed }) => [
                                 styles.suggestChip,
                                 {
@@ -724,12 +745,14 @@ function ChordChip({
 function ChordEditInput({
   value,
   onChange,
+  onBlur,
   onCommit,
   onDelete,
   colors,
 }: {
   value: string;
   onChange: (v: string) => void;
+  onBlur: () => void;
   onCommit: () => void;
   onDelete: () => void;
   colors: ColorsLike;
@@ -748,7 +771,7 @@ function ChordEditInput({
         style={[styles.chordEditInput, { color: colors.primaryForeground }]}
         value={value}
         onChangeText={onChange}
-        onBlur={onCommit}
+        onBlur={onBlur}
         onSubmitEditing={onCommit}
         autoFocus
         autoCapitalize="none"
