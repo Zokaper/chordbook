@@ -14,6 +14,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ChordProvider } from "@/context/ChordContext";
 import { SongProvider } from "@/context/SongContext";
 
 SplashScreen.preventAutoHideAsync();
@@ -22,10 +23,17 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerBackTitle: "Back", animation: "slide_from_right" }}>
+    <Stack screenOptions={{ animation: "slide_from_right" }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="song/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="editor" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen
+        name="editor"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
+      <Stack.Screen
+        name="chord-editor"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
     </Stack>
   );
 }
@@ -50,13 +58,15 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <SongProvider>
-            <GestureHandlerRootView>
-              <KeyboardProvider>
-                <RootLayoutNav />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </SongProvider>
+          <ChordProvider>
+            <SongProvider>
+              <GestureHandlerRootView>
+                <KeyboardProvider>
+                  <RootLayoutNav />
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </SongProvider>
+          </ChordProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

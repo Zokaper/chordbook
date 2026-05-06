@@ -16,6 +16,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "music.note.list", selected: "music.note.list" }} />
         <Label>Library</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="chords">
+        <Icon sf={{ default: "hand.draw", selected: "hand.draw.fill" }} />
+        <Label>Chords</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -67,6 +71,18 @@ function ClassicTabLayout() {
               <SymbolView name="music.note.list" tintColor={color} size={24} />
             ) : (
               <Feather name="music" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="chords"
+        options={{
+          title: "Chords",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="hand.draw" tintColor={color} size={24} />
+            ) : (
+              <Feather name="grid" size={22} color={color} />
             ),
         }}
       />

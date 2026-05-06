@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -16,6 +16,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ChordDiagram } from "@/components/ChordDiagram";
+import { useChords } from "@/context/ChordContext";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -35,21 +37,24 @@ export default function EditorScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { getSong, createSong, updateSong, deleteSong } = useSongs();
+  const { chords } = useChords();
   const isEdit = !!id;
   const existingSong = id ? getSong(id) : undefined;
 
   const [title, setTitle] = useState(existingSong?.title ?? "");
   const [artist, setArtist] = useState(existingSong?.artist ?? "");
-  const [key, setKey] = useState(existingSong?.key ?? "");
+  const [songKey, setSongKey] = useState(existingSong?.key ?? "");
   const [tempo, setTempo] = useState(existingSong?.tempo ?? "");
   const [genre, setGenre] = useState(existingSong?.genre ?? "");
   const [content, setContent] = useState(existingSong?.content ?? "");
   const [saving, setSaving] = useState(false);
+  const [showChordPalette, setShowChordPalette] = useState(false);
 
   const contentRef = useRef<TextInput>(null);
+  const lastCursorPos = useRef<number>(0);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 + 120 : insets.bottom + 120;
+  const bottomPadding = Platform.OS === "web" ? 34 + 60 : insets.bottom + 60;
 
   const canSave = title.trim().length > 0;
 
@@ -61,7 +66,7 @@ export default function EditorScreen() {
       const data = {
         title: title.trim(),
         artist: artist.trim(),
-        key,
+        key: songKey,
         tempo: tempo.trim(),
         genre,
         content,
@@ -97,6 +102,25 @@ export default function EditorScreen() {
     ]);
   };
 
+  const insertChord = (chordName: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const pos = lastCursorPos.current;
+    const before = content.substring(0, pos);
+    const after = content.substring(pos);
+    const insertion = chordName + " ";
+    const newContent = before + insertion + after;
+    setContent(newContent);
+    const newPos = pos + insertion.length;
+    lastCursorPos.current = newPos;
+    // Re-focus and set cursor
+    setTimeout(() => {
+      contentRef.current?.focus();
+      contentRef.current?.setNativeProps?.({
+        selection: { start: newPos, end: newPos },
+      });
+    }, 50);
+  };
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -105,6 +129,7 @@ export default function EditorScreen() {
     >
       <Stack.Screen options={{ headerShown: false }} />
 
+      {/* Header */}
       <View
         style={[
           styles.header,
@@ -136,10 +161,7 @@ export default function EditorScreen() {
                 onPress={handleDelete}
                 style={({ pressed }) => [
                   styles.iconBtn,
-                  {
-                    backgroundColor: colors.secondary,
-                    opacity: pressed ? 0.7 : 1,
-                  },
+                  { backgroundColor: colors.secondary, opacity: pressed ? 0.7 : 1 },
                 ]}
               >
                 <Feather name="trash-2" size={18} color={colors.destructive} />
@@ -159,11 +181,7 @@ export default function EditorScreen() {
               <Text
                 style={[
                   styles.saveBtnText,
-                  {
-                    color: canSave
-                      ? colors.primaryForeground
-                      : colors.mutedForeground,
-                  },
+                  { color: canSave ? colors.primaryForeground : colors.mutedForeground },
                 ]}
               >
                 {saving ? "Saving..." : "Save"}
@@ -175,17 +193,13 @@ export default function EditorScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: bottomPadding },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* Title */}
         <View style={styles.section}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Title *
-          </Text>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>Title *</Text>
           <TextInput
             style={[
               styles.input,
@@ -206,10 +220,9 @@ export default function EditorScreen() {
           />
         </View>
 
+        {/* Artist */}
         <View style={styles.section}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Artist
-          </Text>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>Artist</Text>
           <TextInput
             style={[
               styles.input,
@@ -227,10 +240,9 @@ export default function EditorScreen() {
           />
         </View>
 
+        {/* Key */}
         <View style={styles.section}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Key
-          </Text>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>Key</Text>
           <FlatList
             data={KEYS}
             horizontal
@@ -239,14 +251,12 @@ export default function EditorScreen() {
             contentContainerStyle={styles.chipList}
             renderItem={({ item }) => (
               <Pressable
-                onPress={() => setKey(key === item ? "" : item)}
+                onPress={() => setSongKey(songKey === item ? "" : item)}
                 style={[
                   styles.chip,
                   {
-                    backgroundColor:
-                      key === item ? colors.primary : colors.secondary,
-                    borderColor:
-                      key === item ? colors.primary : colors.border,
+                    backgroundColor: songKey === item ? colors.primary : colors.secondary,
+                    borderColor: songKey === item ? colors.primary : colors.border,
                   },
                 ]}
               >
@@ -254,14 +264,8 @@ export default function EditorScreen() {
                   style={[
                     styles.chipText,
                     {
-                      color:
-                        key === item
-                          ? colors.primaryForeground
-                          : colors.secondaryForeground,
-                      fontFamily:
-                        key === item
-                          ? "Inter_700Bold"
-                          : "Inter_400Regular",
+                      color: songKey === item ? colors.primaryForeground : colors.secondaryForeground,
+                      fontFamily: songKey === item ? "Inter_700Bold" : "Inter_400Regular",
                     },
                   ]}
                 >
@@ -272,34 +276,30 @@ export default function EditorScreen() {
           />
         </View>
 
-        <View style={styles.row2}>
-          <View style={[styles.section, { flex: 1 }]}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              Tempo (BPM)
-            </Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  color: colors.foreground,
-                  backgroundColor: colors.secondary,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder="120"
-              placeholderTextColor={colors.mutedForeground}
-              value={tempo}
-              onChangeText={setTempo}
-              keyboardType="numeric"
-              returnKeyType="done"
-            />
-          </View>
+        {/* Tempo */}
+        <View style={[styles.section, { maxWidth: 180 }]}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>Tempo (BPM)</Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                color: colors.foreground,
+                backgroundColor: colors.secondary,
+                borderColor: colors.border,
+              },
+            ]}
+            placeholder="120"
+            placeholderTextColor={colors.mutedForeground}
+            value={tempo}
+            onChangeText={setTempo}
+            keyboardType="numeric"
+            returnKeyType="done"
+          />
         </View>
 
+        {/* Genre */}
         <View style={styles.section}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Genre
-          </Text>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>Genre</Text>
           <View style={styles.genreGrid}>
             {GENRES.map((g) => (
               <Pressable
@@ -308,10 +308,8 @@ export default function EditorScreen() {
                 style={[
                   styles.chip,
                   {
-                    backgroundColor:
-                      genre === g ? colors.primary : colors.secondary,
-                    borderColor:
-                      genre === g ? colors.primary : colors.border,
+                    backgroundColor: genre === g ? colors.primary : colors.secondary,
+                    borderColor: genre === g ? colors.primary : colors.border,
                   },
                 ]}
               >
@@ -319,12 +317,8 @@ export default function EditorScreen() {
                   style={[
                     styles.chipText,
                     {
-                      color:
-                        genre === g
-                          ? colors.primaryForeground
-                          : colors.secondaryForeground,
-                      fontFamily:
-                        genre === g ? "Inter_700Bold" : "Inter_400Regular",
+                      color: genre === g ? colors.primaryForeground : colors.secondaryForeground,
+                      fontFamily: genre === g ? "Inter_700Bold" : "Inter_400Regular",
                     },
                   ]}
                 >
@@ -335,15 +329,92 @@ export default function EditorScreen() {
           </View>
         </View>
 
+        {/* Chords & Lyrics */}
         <View style={styles.section}>
           <View style={styles.contentLabelRow}>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>
               Chords & Lyrics
             </Text>
-            <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-              Use [Section] headers
-            </Text>
+            <View style={styles.contentLabelActions}>
+              {chords.length > 0 && (
+                <Pressable
+                  onPress={() => setShowChordPalette((v) => !v)}
+                  style={[
+                    styles.paletteToggle,
+                    {
+                      backgroundColor: showChordPalette ? colors.primary : colors.secondary,
+                      borderColor: showChordPalette ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name="grid"
+                    size={12}
+                    color={showChordPalette ? colors.primaryForeground : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.paletteToggleText,
+                      { color: showChordPalette ? colors.primaryForeground : colors.mutedForeground },
+                    ]}
+                  >
+                    My Chords
+                  </Text>
+                </Pressable>
+              )}
+              <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+                Use [Section] headers
+              </Text>
+            </View>
           </View>
+
+          {/* Chord Palette */}
+          {showChordPalette && chords.length > 0 && (
+            <View
+              style={[
+                styles.chordPalette,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <FlatList
+                data={chords}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(c) => c.id}
+                keyboardShouldPersistTaps="always"
+                contentContainerStyle={styles.paletteList}
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => insertChord(item.name)}
+                    style={({ pressed }) => [
+                      styles.paletteItem,
+                      {
+                        backgroundColor: pressed ? colors.secondary : colors.background,
+                        borderColor: colors.border,
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}
+                  >
+                    <ChordDiagram
+                      chord={item}
+                      width={64}
+                      showLabel={false}
+                      primaryColor={colors.primary}
+                      textColor={colors.foreground}
+                      gridColor={colors.border}
+                    />
+                    <Text
+                      style={[styles.paletteItemName, { color: colors.foreground }]}
+                      numberOfLines={1}
+                    >
+                      {item.name}
+                    </Text>
+                  </Pressable>
+                )}
+              />
+            </View>
+          )}
+
           <TextInput
             ref={contentRef}
             style={[
@@ -361,6 +432,9 @@ export default function EditorScreen() {
             placeholderTextColor={colors.mutedForeground}
             value={content}
             onChangeText={setContent}
+            onSelectionChange={(e) => {
+              lastCursorPos.current = e.nativeEvent.selection.start;
+            }}
           />
         </View>
       </ScrollView>
@@ -369,9 +443,7 @@ export default function EditorScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -407,21 +479,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
-  scroll: {
-    flex: 1,
-  },
+  scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 20,
     gap: 20,
   },
-  section: {
-    gap: 8,
-  },
-  row2: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  section: { gap: 8 },
   label: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
@@ -436,10 +500,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_400Regular",
   },
-  chipList: {
-    gap: 8,
-    paddingBottom: 2,
-  },
+  chipList: { gap: 8, paddingBottom: 2 },
   genreGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -451,17 +512,61 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
   },
-  chipText: {
-    fontSize: 13,
-  },
+  chipText: { fontSize: 13 },
   contentLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  contentLabelActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  paletteToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  paletteToggleText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
   },
   hint: {
     fontSize: 11,
     fontFamily: "Inter_400Regular",
+  },
+  chordPalette: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  paletteList: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  paletteItem: {
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingTop: 8,
+    paddingBottom: 6,
+    gap: 4,
+    minWidth: 76,
+  },
+  paletteItemName: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    textAlign: "center",
   },
   contentInput: {
     borderRadius: 12,
@@ -470,7 +575,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 12,
     fontSize: 14,
-    minHeight: 280,
+    minHeight: 260,
     lineHeight: 22,
   },
 });
