@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "z6g1zZCSCkYPs8UwlgxqX"
+uri = "file://artifacts/songbook/assets/images/icon.png"
+type = "image"
+title = "songbook app icon"
