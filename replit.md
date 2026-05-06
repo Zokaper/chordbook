@@ -32,7 +32,8 @@ A personal mobile songbook app where musicians create and store their own songs 
 - `artifacts/songbook/app/(tabs)/index.tsx` — Library screen
 - `artifacts/songbook/app/(tabs)/chords.tsx` — Chord library screen
 - `artifacts/songbook/app/song/[id].tsx` — Song viewer
-- `artifacts/songbook/app/editor.tsx` — Song create/edit screen (includes chord palette)
+- `artifacts/songbook/app/editor.tsx` — Song create/edit screen (uses StructuredEditor)
+- `artifacts/songbook/components/StructuredEditor.tsx` — Section-based song editor (chord chips + lyric lines)
 - `artifacts/songbook/app/chord-editor.tsx` — Chord diagram builder screen
 - `artifacts/songbook/constants/colors.ts` — Design tokens (warm amber/brown theme)
 
