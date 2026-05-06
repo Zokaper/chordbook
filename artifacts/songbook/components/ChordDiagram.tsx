@@ -134,7 +134,7 @@ export function ChordDiagram({
             x2={diagX + diagW}
             y2={fretLineY(f + 1)}
             stroke={gridColor}
-            strokeWidth={1}
+            strokeWidth={0.75}
           />
         ))}
 
@@ -147,7 +147,7 @@ export function ChordDiagram({
             x2={strX(i)}
             y2={fretLineY(NUM_FRETS)}
             stroke={gridColor}
-            strokeWidth={1}
+            strokeWidth={0.75}
           />
         ))}
 

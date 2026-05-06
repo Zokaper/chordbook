@@ -47,8 +47,8 @@ export default function ChordEditorScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
   const canSave = name.trim().length > 0;
 
-  // Diagram fills the screen width minus padding
-  const diagramWidth = Math.min(320, (Platform.OS === "web" ? 390 : 420) - 32);
+  // ~220px keeps string spacing natural (~35px) — not too wide
+  const diagramWidth = 220;
 
   const handleSave = async () => {
     if (!canSave || saving) return;

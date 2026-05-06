@@ -5,7 +5,7 @@
  *  1. SVG at the bottom — draws everything (grid, dots, ghost dot, labels)
  *  2. Pressable cells on top — transparent, capture all touches
  *
- * No `pointerEvents` style / prop needed: Pressables rendered last are
+ * No pointerEvents style/prop needed: Pressables rendered last are
  * highest in z-order and receive all touches; the SVG below is purely visual.
  */
 import React, { useMemo, useState } from "react";
@@ -38,7 +38,7 @@ interface Props {
 export function ChordDiagramEditor({
   value,
   onChange,
-  width = 290,
+  width = 220,
   primaryColor = "#e8a043",
   textColor = "#f5ede4",
   gridColor = "#5a3e2c",
@@ -48,18 +48,18 @@ export function ChordDiagramEditor({
   const [pressedCell, setPressedCell] = useState<string | null>(null);
 
   const L = useMemo(() => {
-    const nameLabelH = 18;
-    const markerH = 38;
+    const nameLabelH = 16;
+    const markerH = 30;
     const topPad = nameLabelH + markerH;
-    const leftPad = baseFret > 1 ? 32 : 18;
-    const rightPad = 18;
-    const bottomPad = 12;
+    const leftPad = baseFret > 1 ? 28 : 14;
+    const rightPad = 14;
+    const bottomPad = 10;
     const diagW = width - leftPad - rightPad;
     const sp = diagW / (NUM_STRINGS - 1);
-    const fretH = Math.round(sp * 1.45);
+    const fretH = Math.round(sp * 1.55);
     const totalH = topPad + fretH * NUM_FRETS + bottomPad;
-    // Cap so dots don't crowd each other at large widths
-    const dotR = Math.max(9, Math.min(sp * 0.36, 16));
+    // Keep dots comfortable: no bigger than 14px radius
+    const dotR = Math.max(8, Math.min(sp * 0.34, 14));
     const strX = (i: number) => leftPad + i * sp;
     const fretLineY = (f: number) => topPad + f * fretH;
     const dotCY = (rel: number) => topPad + (rel - 0.5) * fretH;
@@ -99,9 +99,9 @@ export function ChordDiagramEditor({
         {STRING_NAMES.map((n, i) => (
           <SvgText
             key={`lbl-${i}`}
-            x={strX(i)} y={nameLabelH * 0.72}
+            x={strX(i)} y={nameLabelH * 0.75}
             textAnchor="middle" alignmentBaseline="middle"
-            fill={textColor} fontSize={11} fontWeight="600" opacity={0.55}
+            fill={textColor} fontSize={10} fontWeight="600" opacity={0.5}
           >
             {n}
           </SvgText>
@@ -110,20 +110,20 @@ export function ChordDiagramEditor({
         {/* Fret position number */}
         {baseFret > 1 && (
           <SvgText
-            x={leftPad - 8} y={dotCY(1)}
+            x={leftPad - 7} y={dotCY(1)}
             textAnchor="end" alignmentBaseline="middle"
-            fill={textColor} fontSize={13}
+            fill={textColor} fontSize={12} opacity={0.7}
           >
             {baseFret}
           </SvgText>
         )}
 
-        {/* Nut */}
+        {/* Nut (thick top line) */}
         <Line
           x1={leftPad} y1={topPad}
           x2={leftPad + diagW} y2={topPad}
           stroke={textColor}
-          strokeWidth={baseFret === 1 ? 5 : 2}
+          strokeWidth={baseFret === 1 ? 5 : 1.5}
           strokeLinecap="round"
         />
 
@@ -133,7 +133,7 @@ export function ChordDiagramEditor({
             key={`fl-${f}`}
             x1={leftPad} y1={fretLineY(f + 1)}
             x2={leftPad + diagW} y2={fretLineY(f + 1)}
-            stroke={gridColor} strokeWidth={1.5}
+            stroke={gridColor} strokeWidth={1}
           />
         ))}
 
@@ -143,30 +143,30 @@ export function ChordDiagramEditor({
             key={`sl-${i}`}
             x1={strX(i)} y1={topPad}
             x2={strX(i)} y2={fretLineY(NUM_FRETS)}
-            stroke={gridColor} strokeWidth={1.5}
+            stroke={gridColor} strokeWidth={1}
           />
         ))}
 
         {/* X / O string markers */}
         {strings.map((val, i) => {
           const cx = strX(i);
-          const cy = nameLabelH + markerH * 0.45;
-          const r = Math.max(7, dotR * 0.55);
+          const cy = nameLabelH + markerH * 0.5;
+          const r = Math.max(6, dotR * 0.48);
           if (val === -1) {
             const s = r * 0.72;
             return (
               <G key={`xo-${i}`}>
                 <Line x1={cx - s} y1={cy - s} x2={cx + s} y2={cy + s}
-                  stroke={mutedColor} strokeWidth={2.5} strokeLinecap="round" />
+                  stroke={mutedColor} strokeWidth={2} strokeLinecap="round" />
                 <Line x1={cx + s} y1={cy - s} x2={cx - s} y2={cy + s}
-                  stroke={mutedColor} strokeWidth={2.5} strokeLinecap="round" />
+                  stroke={mutedColor} strokeWidth={2} strokeLinecap="round" />
               </G>
             );
           }
           if (val === 0) {
             return (
               <Circle key={`xo-${i}`} cx={cx} cy={cy} r={r}
-                fill="none" stroke={textColor} strokeWidth={2} />
+                fill="none" stroke={textColor} strokeWidth={1.5} opacity={0.6} />
             );
           }
           return null;
@@ -217,7 +217,7 @@ export function ChordDiagramEditor({
             <Circle
               key="ghost"
               cx={strX(col)} cy={dotCY(row + 1)}
-              r={dotR} fill={primaryColor} opacity={0.35}
+              r={dotR} fill={primaryColor} opacity={0.3}
             />
           );
         })()}
