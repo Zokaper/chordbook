@@ -8,7 +8,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "export": "expo export --platform web && touch dist/.nojekyll && sed -i 's|href=\"/_expo/|href=\"/chordbook/_expo/|g; s|src=\"/_expo/|src=\"/chordbook/_expo/|g' dist/index.html"
+    "export": "expo export --platform web && node scripts/post-export.js"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
