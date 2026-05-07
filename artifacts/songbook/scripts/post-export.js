@@ -61,15 +61,20 @@ fs.writeFileSync(
 
 // ─── 5. Write service worker ──────────────────────────────────────────────────
 // Collects every file in dist so the SW can cache them all.
-function listFiles(dir, base) {
+// Skip only the root-level hidden files (.nojekyll, sw.js itself, etc.)
+// but DO recurse into hidden dirs like .pnpm since those contain real assets
+function listFiles(dir, isRoot = false) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   let files = [];
   for (const e of entries) {
-    if (e.name.startsWith(".")) continue; // skip .nojekyll etc
+    // At the root level skip dot-files (e.g. .nojekyll). In subdirs keep everything.
+    if (isRoot && e.name.startsWith(".")) continue;
+    // Never cache sw.js itself in the install list (would cause circular issues)
+    if (e.name === "sw.js") continue;
     const full = path.join(dir, e.name);
     const rel = BASE + "/" + path.relative(distDir, full).replace(/\\/g, "/");
     if (e.isDirectory()) {
-      files = files.concat(listFiles(full, base));
+      files = files.concat(listFiles(full, false));
     } else {
       files.push(rel);
     }
@@ -102,6 +107,9 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   // Only handle same-origin requests under our scope
   if (url.origin !== location.origin) return;
+  // Determine if this is a page navigation (HTML) request
+  const isNavigation = event.request.mode === 'navigate' ||
+    event.request.headers.get('accept')?.includes('text/html');
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
@@ -110,8 +118,13 @@ self.addEventListener('fetch', event => {
         const clone = response.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         return response;
+      }).catch(() => {
+        // Only serve the app shell as fallback for page navigations
+        // For fonts/images/scripts, let the browser handle the failure naturally
+        if (isNavigation) return caches.match('${BASE}/');
+        return new Response('', { status: 408 });
       });
-    }).catch(() => caches.match('${BASE}/'))
+    })
   );
 });
 `.trim();

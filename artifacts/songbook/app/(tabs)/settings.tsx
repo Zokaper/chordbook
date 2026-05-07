@@ -48,8 +48,16 @@ export default function SettingsScreen() {
   const { chords, importChords } = useChords();
   const [importing, setImporting] = useState(false);
 
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 + 60 : insets.bottom + 60;
+  const isStandalonePWA =
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(display-mode: standalone)").matches;
+  const topPadding = Platform.OS === "web"
+    ? isStandalonePWA ? Math.max(insets.top, 24) : 67
+    : insets.top;
+  const bottomPadding = Platform.OS === "web"
+    ? (isStandalonePWA ? Math.max(insets.bottom, 16) : 34) + 60
+    : insets.bottom + 60;
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const handleExport = () => {

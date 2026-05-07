@@ -47,8 +47,14 @@ export default function ChordsScreen() {
   const { songs } = useSongs();
   const [search, setSearch] = useState("");
 
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : 0;
+  const isStandalonePWA =
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(display-mode: standalone)").matches;
+  const topPadding = Platform.OS === "web"
+    ? isStandalonePWA ? Math.max(insets.top, 24) : 67
+    : insets.top;
+  const bottomPadding = Platform.OS === "web" ? (isStandalonePWA ? Math.max(insets.bottom, 16) : 34) : 0;
 
   // Count how many songs use each chord name
   const songCountByName = useMemo(() => {

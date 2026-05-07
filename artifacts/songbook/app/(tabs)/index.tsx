@@ -56,8 +56,14 @@ export default function LibraryScreen() {
   const [activeChords, setActiveChords] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
 
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : 0;
+  const isStandalonePWA =
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(display-mode: standalone)").matches;
+  const topPadding = Platform.OS === "web"
+    ? isStandalonePWA ? Math.max(insets.top, 24) : 67
+    : insets.top;
+  const bottomPadding = Platform.OS === "web" ? (isStandalonePWA ? Math.max(insets.bottom, 16) : 34) : 0;
 
   // All unique keys across songs
   const allKeys = useMemo(
