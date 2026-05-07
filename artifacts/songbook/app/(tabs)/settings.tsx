@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Platform,
@@ -33,22 +33,133 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "artist", label: "Artist" },
 ];
 
+interface BackupData {
+  version: number;
+  exportedAt: string;
+  songs: unknown[];
+  chords: unknown[];
+}
+
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { settings, setTheme, setSortBy } = useSettings();
-  const { songs, clearAllSongs } = useSongs();
-  const { chords } = useChords();
+  const { songs, clearAllSongs, importSongs } = useSongs();
+  const { chords, importChords } = useChords();
+  const [importing, setImporting] = useState(false);
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 + 60 : insets.bottom + 60;
 
+  // ── Export ──────────────────────────────────────────────────────────────────
+  const handleExport = () => {
+    const data: BackupData = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      songs,
+      chords,
+    };
+    const json = JSON.stringify(data, null, 2);
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `songbook-backup-${date}.json`;
+
+    if (Platform.OS === "web") {
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Alert.alert(
+        "Export not available",
+        "Open this app in a browser to export your library as a backup file."
+      );
+    }
+  };
+
+  // ── Import ──────────────────────────────────────────────────────────────────
+  const handleImport = () => {
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "Import not available",
+        "Open this app in a browser to import a backup file."
+      );
+      return;
+    }
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      setImporting(true);
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text) as Partial<BackupData>;
+
+        if (!Array.isArray(data.songs)) {
+          Alert.alert(
+            "Invalid backup",
+            "This file doesn't look like a Songbook backup. No songs found."
+          );
+          return;
+        }
+
+        const songCount = data.songs.length;
+        const chordCount = Array.isArray(data.chords) ? data.chords.length : 0;
+        const exportDate = data.exportedAt
+          ? new Date(data.exportedAt).toLocaleDateString()
+          : "unknown date";
+
+        Alert.alert(
+          "Restore backup?",
+          `This backup from ${exportDate} contains ${songCount} song${songCount !== 1 ? "s" : ""}${chordCount > 0 ? ` and ${chordCount} chord${chordCount !== 1 ? "s" : ""}` : ""}.\n\nYour current library will be replaced. This cannot be undone.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Restore",
+              style: "destructive",
+              onPress: async () => {
+                await importSongs(data.songs!);
+                if (Array.isArray(data.chords)) {
+                  await importChords(data.chords);
+                }
+                Haptics.notificationAsync(
+                  Haptics.NotificationFeedbackType.Success
+                );
+                Alert.alert(
+                  "Restored",
+                  `${songCount} song${songCount !== 1 ? "s" : ""} have been restored to your library.`
+                );
+              },
+            },
+          ]
+        );
+      } catch {
+        Alert.alert(
+          "Import failed",
+          "Could not read the file. Make sure it's a valid Songbook backup."
+        );
+      } finally {
+        setImporting(false);
+      }
+    };
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
+  };
+
+  // ── Delete all ──────────────────────────────────────────────────────────────
   const handleClearSongs = () => {
     Alert.alert(
       "Delete all songs?",
-      `This permanently removes all ${songs.length} song${
-        songs.length === 1 ? "" : "s"
-      } from your library. This cannot be undone.`,
+      `This permanently removes all ${songs.length} song${songs.length === 1 ? "" : "s"} from your library. This cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -68,10 +179,7 @@ export default function SettingsScreen() {
       <View
         style={[
           styles.header,
-          {
-            paddingTop: topPadding + 12,
-            borderBottomColor: colors.border,
-          },
+          { paddingTop: topPadding + 12, borderBottomColor: colors.border },
         ]}
       >
         <Text style={[styles.appName, { color: colors.foreground }]}>
@@ -80,10 +188,7 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: bottomPadding },
-        ]}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomPadding }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Appearance */}
@@ -105,9 +210,7 @@ export default function SettingsScreen() {
                     style={[
                       styles.segment,
                       {
-                        backgroundColor: active
-                          ? colors.primary
-                          : colors.secondary,
+                        backgroundColor: active ? colors.primary : colors.secondary,
                         borderColor: active ? colors.primary : colors.border,
                       },
                     ]}
@@ -115,22 +218,14 @@ export default function SettingsScreen() {
                     <Feather
                       name={opt.icon}
                       size={13}
-                      color={
-                        active
-                          ? colors.primaryForeground
-                          : colors.secondaryForeground
-                      }
+                      color={active ? colors.primaryForeground : colors.secondaryForeground}
                     />
                     <Text
                       style={[
                         styles.segmentText,
                         {
-                          color: active
-                            ? colors.primaryForeground
-                            : colors.secondaryForeground,
-                          fontFamily: active
-                            ? "Inter_600SemiBold"
-                            : "Inter_400Regular",
+                          color: active ? colors.primaryForeground : colors.secondaryForeground,
+                          fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
                         },
                       ]}
                     >
@@ -162,9 +257,7 @@ export default function SettingsScreen() {
                     style={[
                       styles.segment,
                       {
-                        backgroundColor: active
-                          ? colors.primary
-                          : colors.secondary,
+                        backgroundColor: active ? colors.primary : colors.secondary,
                         borderColor: active ? colors.primary : colors.border,
                       },
                     ]}
@@ -173,12 +266,8 @@ export default function SettingsScreen() {
                       style={[
                         styles.segmentText,
                         {
-                          color: active
-                            ? colors.primaryForeground
-                            : colors.secondaryForeground,
-                          fontFamily: active
-                            ? "Inter_600SemiBold"
-                            : "Inter_400Regular",
+                          color: active ? colors.primaryForeground : colors.secondaryForeground,
+                          fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
                         },
                       ]}
                     >
@@ -193,18 +282,58 @@ export default function SettingsScreen() {
 
         {/* Stats */}
         <Section label="Your library" colors={colors}>
-          <StatRow
-            icon="music"
-            label="Songs"
-            value={String(songs.length)}
-            colors={colors}
-          />
-          <StatRow
-            icon="grid"
-            label="Saved chords"
-            value={String(chords.length)}
-            colors={colors}
-          />
+          <StatRow icon="music" label="Songs" value={String(songs.length)} colors={colors} />
+          <StatRow icon="grid" label="Saved chords" value={String(chords.length)} colors={colors} />
+        </Section>
+
+        {/* Backup & Restore */}
+        <Section label="Backup & Restore" colors={colors}>
+          <Text style={[styles.backupHint, { color: colors.mutedForeground }]}>
+            Export your library to a file you can save anywhere. Import it later to restore everything — songs, chords, and all.
+          </Text>
+
+          <View style={styles.backupRow}>
+            <Pressable
+              onPress={handleExport}
+              disabled={songs.length === 0 && chords.length === 0}
+              style={({ pressed }) => [
+                styles.backupBtn,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  opacity:
+                    songs.length === 0 && chords.length === 0
+                      ? 0.4
+                      : pressed
+                      ? 0.75
+                      : 1,
+                },
+              ]}
+            >
+              <Feather name="download" size={17} color={colors.primary} />
+              <Text style={[styles.backupBtnText, { color: colors.primary }]}>
+                Export
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleImport}
+              disabled={importing}
+              style={({ pressed }) => [
+                styles.backupBtn,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  opacity: importing ? 0.5 : pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Feather name="upload" size={17} color={colors.foreground} />
+              <Text style={[styles.backupBtnText, { color: colors.foreground }]}>
+                {importing ? "Importing…" : "Import"}
+              </Text>
+            </Pressable>
+          </View>
         </Section>
 
         {/* Danger zone */}
@@ -277,33 +406,18 @@ function StatRow({
     <View style={styles.statRow}>
       <View style={styles.statLeft}>
         <Feather name={icon} size={15} color={colors.mutedForeground} />
-        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
-          {label}
-        </Text>
+        <Text style={[styles.rowLabel, { color: colors.foreground }]}>{label}</Text>
       </View>
-      <Text style={[styles.statValue, { color: colors.mutedForeground }]}>
-        {value}
-      </Text>
+      <Text style={[styles.statValue, { color: colors.mutedForeground }]}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  appName: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.5,
-  },
-  content: {
-    padding: 16,
-    gap: 22,
-  },
+  header: { paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1 },
+  appName: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  content: { padding: 16, gap: 22 },
   section: { gap: 8 },
   sectionLabel: {
     fontSize: 11,
@@ -325,19 +439,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  rowColumn: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-  },
-  rowLabel: {
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
-  },
-  segmented: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
+  rowColumn: { flexDirection: "column", alignItems: "flex-start" },
+  rowLabel: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  segmented: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   segment: {
     flexDirection: "row",
     alignItems: "center",
@@ -347,24 +451,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 6,
   },
-  segmentText: {
-    fontSize: 12,
-  },
+  segmentText: { fontSize: 12 },
   statRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 4,
   },
-  statLeft: {
+  statLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  statValue: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+
+  // ── Backup ────────────────────────────────────────────────────────────────
+  backupHint: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 19,
+  },
+  backupRow: { flexDirection: "row", gap: 10 },
+  backupBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 12,
   },
-  statValue: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
+  backupBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+
+  // ── Danger ────────────────────────────────────────────────────────────────
   dangerBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -374,10 +490,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingVertical: 12,
   },
-  dangerText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
+  dangerText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   footer: {
     fontSize: 11,
     fontFamily: "Inter_400Regular",

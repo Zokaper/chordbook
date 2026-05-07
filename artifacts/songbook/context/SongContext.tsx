@@ -35,6 +35,7 @@ interface SongContextValue {
   deleteSong: (id: string) => Promise<void>;
   getSong: (id: string) => Song | undefined;
   clearAllSongs: () => Promise<void>;
+  importSongs: (raw: unknown[]) => Promise<void>;
 }
 
 const SongContext = createContext<SongContextValue | null>(null);
@@ -152,6 +153,11 @@ export function SongProvider({ children }: { children: React.ReactNode }) {
     await saveSongs([]);
   }, []);
 
+  const importSongs = useCallback(async (raw: unknown[]) => {
+    const { songs: migrated } = migrate(raw);
+    await saveSongs(migrated);
+  }, []);
+
   const allTags = useMemo(() => {
     const set = new Set<string>();
     for (const s of songs) for (const t of s.tags) if (t) set.add(t);
@@ -169,6 +175,7 @@ export function SongProvider({ children }: { children: React.ReactNode }) {
         deleteSong,
         getSong,
         clearAllSongs,
+        importSongs,
       }}
     >
       {children}

@@ -8,6 +8,7 @@ import {
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -18,6 +19,11 @@ import { SettingsProvider } from "@/context/SettingsContext";
 import { SongProvider } from "@/context/SongContext";
 
 SplashScreen.preventAutoHideAsync();
+
+// Request persistent storage on web so the browser won't silently evict data
+if (Platform.OS === "web" && typeof navigator !== "undefined") {
+  navigator.storage?.persist?.();
+}
 
 function RootLayoutNav() {
   return (
