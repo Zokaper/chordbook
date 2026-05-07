@@ -12,12 +12,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 
 import { ChordCard } from "@/components/ChordCard";
 import { ChordFingering, useChords } from "@/context/ChordContext";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
 
 const CHORD_TOKEN_RE =
   /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
@@ -42,19 +43,12 @@ interface ChordGroup {
 
 export default function ChordsScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { chords, deleteChord } = useChords();
   const { songs } = useSongs();
   const [search, setSearch] = useState("");
 
-  const isStandalonePWA =
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(display-mode: standalone)").matches;
-  const topPadding = Platform.OS === "web"
-    ? isStandalonePWA ? Math.max(insets.top, 24) : 67
-    : insets.top;
-  const bottomPadding = Platform.OS === "web" ? (isStandalonePWA ? Math.max(insets.bottom, 16) : 34) : 0;
+  const topPadding = useTopPadding();
+  const bottomPadding = useBottomPadding();
 
   // Count how many songs use each chord name
   const songCountByName = useMemo(() => {

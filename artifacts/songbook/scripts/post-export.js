@@ -38,7 +38,26 @@ const destAssetsDir = path.join(distDir, "assets");
 fs.mkdirSync(destAssetsDir, { recursive: true });
 fs.copyFileSync(srcIcon, path.join(destAssetsDir, "icon.png"));
 
-// ─── 4. Rename .pnpm → _pnpm inside dist/assets/__node_modules ───────────────
+// ─── 4. Patch JS bundle: replace /.pnpm/ → /_pnpm/ ──────────────────────────
+// The SW rewrites URLs at runtime, but on the *first* load the SW isn't yet
+// active so the bundle's hardcoded font URLs go straight to GitHub Pages —
+// which refuses to serve dot-directories. Patching the bundle text means fonts
+// load correctly on every load without depending on the SW.
+const jsStaticDir = path.join(distDir, "_expo", "static", "js", "web");
+if (fs.existsSync(jsStaticDir)) {
+  for (const file of fs.readdirSync(jsStaticDir)) {
+    if (!file.endsWith(".js")) continue;
+    const filePath = path.join(jsStaticDir, file);
+    const original = fs.readFileSync(filePath, "utf8");
+    const patched = original.split("/__node_modules/.pnpm/").join("/__node_modules/_pnpm/");
+    if (patched !== original) {
+      fs.writeFileSync(filePath, patched);
+      console.log(`  - Patched bundle: ${file}`);
+    }
+  }
+}
+
+// ─── 4b. Rename .pnpm → _pnpm inside dist/assets/__node_modules ──────────────
 // GitHub Pages refuses to serve files inside directories whose names start with
 // a dot, even with .nojekyll. Renaming to _pnpm (underscore) makes them
 // accessible. The service worker rewrites all request URLs at runtime so the

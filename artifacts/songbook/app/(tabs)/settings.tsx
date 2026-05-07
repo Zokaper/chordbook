@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 
 import { useChords } from "@/context/ChordContext";
 import {
@@ -20,6 +20,7 @@ import {
 } from "@/context/SettingsContext";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
 
 const THEME_OPTIONS: { value: ThemePref; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { value: "system", label: "System", icon: "smartphone" },
@@ -42,22 +43,13 @@ interface BackupData {
 
 export default function SettingsScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { settings, setTheme, setSortBy } = useSettings();
   const { songs, clearAllSongs, importSongs } = useSongs();
   const { chords, importChords } = useChords();
   const [importing, setImporting] = useState(false);
 
-  const isStandalonePWA =
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(display-mode: standalone)").matches;
-  const topPadding = Platform.OS === "web"
-    ? isStandalonePWA ? Math.max(insets.top, 24) : 67
-    : insets.top;
-  const bottomPadding = Platform.OS === "web"
-    ? (isStandalonePWA ? Math.max(insets.bottom, 16) : 34) + 60
-    : insets.bottom + 60;
+  const topPadding = useTopPadding();
+  const bottomPadding = useBottomPadding(60);
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const handleExport = () => {

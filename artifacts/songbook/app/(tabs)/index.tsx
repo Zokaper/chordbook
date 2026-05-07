@@ -14,13 +14,14 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 
 import { SongCard } from "@/components/SongCard";
 import { useChords } from "@/context/ChordContext";
 import { useSettings, type SortBy } from "@/context/SettingsContext";
 import { Song, useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
 
 const CHORD_TOKEN_RE =
   /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
@@ -45,7 +46,6 @@ const SORT_LABELS: Record<SortBy, string> = {
 
 export default function LibraryScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { songs, deleteSong, loading, allTags } = useSongs();
   const { chords } = useChords();
   const { settings, setSortBy } = useSettings();
@@ -56,14 +56,8 @@ export default function LibraryScreen() {
   const [activeChords, setActiveChords] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
 
-  const isStandalonePWA =
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(display-mode: standalone)").matches;
-  const topPadding = Platform.OS === "web"
-    ? isStandalonePWA ? Math.max(insets.top, 24) : 67
-    : insets.top;
-  const bottomPadding = Platform.OS === "web" ? (isStandalonePWA ? Math.max(insets.bottom, 16) : 34) : 0;
+  const topPadding = useTopPadding();
+  const bottomPadding = useBottomPadding();
 
   // All unique keys across songs
   const allKeys = useMemo(
