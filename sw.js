@@ -1,8 +1,8 @@
-const CACHE_NAME = 'chordbook-v1778171074013';
+const CACHE_NAME = 'chordbook-v1778171821238';
 const CACHED_URLS = [
   "/chordbook/",
   "/chordbook/_expo/static/css/native-tabs.module-1c34c93ae030da6223919552702a4e39.css",
-  "/chordbook/_expo/static/js/web/entry-8455c95faa73fbca85cf1a899ac5fd9b.js",
+  "/chordbook/_expo/static/js/web/entry-d11e7c04aa627fc58177c27ddae53365.js",
   "/chordbook/assets/__node_modules/_pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.11_expo@54.0.34_react-native@0.81.5_@babel+cor_2740e675501621396d5942ff373dfc3f/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.3f78af31cca60105799838a1a7a59fbd.ttf",
   "/chordbook/assets/__node_modules/_pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.11_expo@54.0.34_react-native@0.81.5_@babel+cor_2740e675501621396d5942ff373dfc3f/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Entypo.31b5ffea3daddc69dd01a1f3d6cf63c5.ttf",
   "/chordbook/assets/__node_modules/_pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.11_expo@54.0.34_react-native@0.81.5_@babel+cor_2740e675501621396d5942ff373dfc3f/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/EvilIcons.140c53a7643ea949007aa9a282153849.ttf",
