@@ -38,7 +38,20 @@ const destAssetsDir = path.join(distDir, "assets");
 fs.mkdirSync(destAssetsDir, { recursive: true });
 fs.copyFileSync(srcIcon, path.join(destAssetsDir, "icon.png"));
 
-// ─── 4. Write manifest.json ───────────────────────────────────────────────────
+// ─── 4. Rename .pnpm → _pnpm inside dist/assets/__node_modules ───────────────
+// GitHub Pages refuses to serve files inside directories whose names start with
+// a dot, even with .nojekyll. Renaming to _pnpm (underscore) makes them
+// accessible. The service worker rewrites all request URLs at runtime so the
+// bundle's hardcoded /.pnpm/ paths still resolve correctly.
+const nodeModulesDir = path.join(distDir, "assets", "__node_modules");
+const dotPnpmDir = path.join(nodeModulesDir, ".pnpm");
+const underPnpmDir = path.join(nodeModulesDir, "_pnpm");
+if (fs.existsSync(dotPnpmDir)) {
+  if (fs.existsSync(underPnpmDir)) fs.rmSync(underPnpmDir, { recursive: true });
+  fs.renameSync(dotPnpmDir, underPnpmDir);
+}
+
+// ─── 5. Write manifest.json ───────────────────────────────────────────────────
 const manifest = {
   name: "Chordbook",
   short_name: "Chordbook",
@@ -59,17 +72,15 @@ fs.writeFileSync(
   JSON.stringify(manifest, null, 2)
 );
 
-// ─── 5. Write service worker ──────────────────────────────────────────────────
-// Collects every file in dist so the SW can cache them all.
-// Skip only the root-level hidden files (.nojekyll, sw.js itself, etc.)
-// but DO recurse into hidden dirs like .pnpm since those contain real assets
+// ─── 6. Write service worker ──────────────────────────────────────────────────
+// Lists every file in dist that GitHub Pages will actually serve.
+// Skips dot-files/dirs at root (e.g. .nojekyll) and sw.js itself.
+// After the rename above, .pnpm no longer exists so _pnpm is listed instead.
 function listFiles(dir, isRoot = false) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   let files = [];
   for (const e of entries) {
-    // At the root level skip dot-files (e.g. .nojekyll). In subdirs keep everything.
-    if (isRoot && e.name.startsWith(".")) continue;
-    // Never cache sw.js itself in the install list (would cause circular issues)
+    if (isRoot && e.name.startsWith(".")) continue; // skip .nojekyll etc at root
     if (e.name === "sw.js") continue;
     const full = path.join(dir, e.name);
     const rel = BASE + "/" + path.relative(distDir, full).replace(/\\/g, "/");
@@ -82,16 +93,27 @@ function listFiles(dir, isRoot = false) {
   return files;
 }
 
-const cachedFiles = listFiles(distDir);
+const cachedFiles = listFiles(distDir, true);
 const CACHE_NAME = `chordbook-v${Date.now()}`;
 
 const swContent = `
 const CACHE_NAME = '${CACHE_NAME}';
 const CACHED_URLS = ${JSON.stringify([BASE + "/", ...cachedFiles], null, 2)};
 
+// GitHub Pages doesn't serve dot-directories, so .pnpm was renamed to _pnpm.
+// Rewrite all asset URLs that reference /.pnpm/ → /_pnpm/ so the bundle's
+// hardcoded paths resolve to the actually-served files.
+function rewritePnpm(url) {
+  return url.includes('/__node_modules/.pnpm/')
+    ? url.replace('/__node_modules/.pnpm/', '/__node_modules/_pnpm/')
+    : url;
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(CACHED_URLS)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(CACHED_URLS))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -104,25 +126,28 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  // Only handle same-origin requests under our scope
-  if (url.origin !== location.origin) return;
-  // Determine if this is a page navigation (HTML) request
+  const rawUrl = event.request.url;
+  const rewritten = rewritePnpm(rawUrl);
   const isNavigation = event.request.mode === 'navigate' ||
-    event.request.headers.get('accept')?.includes('text/html');
+    (event.request.headers.get('accept') || '').includes('text/html');
+
+  // Build the request we'll actually use (rewritten URL if needed)
+  const req = rewritten !== rawUrl ? new Request(rewritten, event.request) : event.request;
+
+  // Only handle same-origin requests
+  if (!rawUrl.startsWith(self.location.origin)) return;
+
   event.respondWith(
-    caches.match(event.request).then(cached => {
+    caches.match(req).then(cached => {
       if (cached) return cached;
-      return fetch(event.request).then(response => {
+      return fetch(req).then(response => {
         if (!response || response.status !== 200 || response.type === 'opaque') return response;
         const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        caches.open(CACHE_NAME).then(cache => cache.put(req, clone));
         return response;
       }).catch(() => {
-        // Only serve the app shell as fallback for page navigations
-        // For fonts/images/scripts, let the browser handle the failure naturally
         if (isNavigation) return caches.match('${BASE}/');
-        return new Response('', { status: 408 });
+        return new Response('', { status: 408, statusText: 'Offline' });
       });
     })
   );
@@ -131,13 +156,14 @@ self.addEventListener('fetch', event => {
 
 fs.writeFileSync(path.join(distDir, "sw.js"), swContent);
 
-// ─── 6. .nojekyll so GitHub Pages serves _expo/ ──────────────────────────────
+// ─── 7. .nojekyll so GitHub Pages serves _expo/ and _pnpm/ ──────────────────
 fs.writeFileSync(path.join(distDir, ".nojekyll"), "");
 
 console.log("✓ Post-export complete");
 console.log(`  - Fixed asset paths`);
 console.log(`  - Injected PWA tags + SW registration`);
+console.log(`  - Renamed .pnpm → _pnpm (GitHub Pages dot-dir fix)`);
 console.log(`  - Wrote manifest.json`);
-console.log(`  - Wrote sw.js (${cachedFiles.length} files cached)`);
+console.log(`  - Wrote sw.js (${cachedFiles.length} files cached, with URL rewriting)`);
 console.log(`  - Copied icon.png`);
 console.log(`  - Added .nojekyll`);
