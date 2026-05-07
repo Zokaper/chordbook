@@ -59,6 +59,7 @@ export default function EditorScreen() {
         tempo: tempo.trim(),
         tags,
         content,
+        chordVariants: existingSong?.chordVariants ?? {},
       };
       if (isEdit && id) {
         await updateSong(id, data);

@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -16,16 +16,46 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChordCard } from "@/components/ChordCard";
 import { ChordFingering, useChords } from "@/context/ChordContext";
+import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+
+const CHORD_TOKEN_RE =
+  /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
+
+function chordsInContent(content: string): Set<string> {
+  const names = new Set<string>();
+  for (const line of content.split("\n")) {
+    if (line.startsWith("[")) continue;
+    const chordPro = [...line.matchAll(/\[([A-G][#b]?[^\]]*)\]/g)].map((m) => m[1]);
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
+    const isChordLine = tokens.length > 0 && tokens.every((t) => CHORD_TOKEN_RE.test(t));
+    const hits = isChordLine ? tokens : chordPro;
+    hits.forEach((h) => names.add(h));
+  }
+  return names;
+}
 
 export default function ChordsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { chords, deleteChord } = useChords();
+  const { songs } = useSongs();
   const [search, setSearch] = useState("");
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
+
+  // Count how many songs use each chord name
+  const songCountByName = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const song of songs) {
+      const names = chordsInContent(song.content);
+      names.forEach((name) => {
+        counts[name] = (counts[name] ?? 0) + 1;
+      });
+    }
+    return counts;
+  }, [songs]);
 
   const filtered = chords.filter((c: ChordFingering) =>
     !search || c.name.toLowerCase().includes(search.toLowerCase())
@@ -55,9 +85,17 @@ export default function ChordsScreen() {
     const next = filtered[index + 1];
     return (
       <View style={styles.row}>
-        <ChordCard chord={item} onLongPress={handleDelete} />
+        <ChordCard
+          chord={item}
+          onLongPress={handleDelete}
+          songCount={songCountByName[item.name] ?? 0}
+        />
         {next ? (
-          <ChordCard chord={next} onLongPress={handleDelete} />
+          <ChordCard
+            chord={next}
+            onLongPress={handleDelete}
+            songCount={songCountByName[next.name] ?? 0}
+          />
         ) : (
           <View style={styles.emptySlot} />
         )}
@@ -68,19 +106,11 @@ export default function ChordsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View
-        style={[
-          styles.header,
-          {
-            paddingTop: topPadding + 12,
-            borderBottomColor: colors.border,
-          },
-        ]}
+        style={[styles.header, { paddingTop: topPadding + 12, borderBottomColor: colors.border }]}
       >
         <View style={styles.headerTop}>
           <View>
-            <Text style={[styles.title, { color: colors.foreground }]}>
-              My Chords
-            </Text>
+            <Text style={[styles.title, { color: colors.foreground }]}>My Chords</Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
               {chords.length} {chords.length === 1 ? "chord" : "chords"} saved
             </Text>
@@ -100,12 +130,7 @@ export default function ChordsScreen() {
           </Pressable>
         </View>
 
-        <View
-          style={[
-            styles.searchBar,
-            { backgroundColor: colors.secondary, borderColor: colors.border },
-          ]}
-        >
+        <View style={[styles.searchBar, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
           <Feather name="search" size={16} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground }]}
@@ -126,10 +151,7 @@ export default function ChordsScreen() {
         data={filtered}
         keyExtractor={(c) => c.id}
         renderItem={renderItem}
-        contentContainerStyle={[
-          styles.list,
-          { paddingBottom: bottomPadding + 32 },
-        ]}
+        contentContainerStyle={[styles.list, { paddingBottom: bottomPadding + 32 }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -151,71 +173,24 @@ export default function ChordsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    gap: 12,
-  },
-  headerTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
-  },
+  header: { paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, gap: 12 },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  subtitle: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
   addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: "center", justifyContent: "center",
   },
   searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    flexDirection: "row", alignItems: "center",
+    borderRadius: 12, borderWidth: 1,
+    paddingHorizontal: 12, paddingVertical: 10, gap: 8,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-  },
-  list: {
-    padding: 16,
-    gap: 10,
-  },
-  row: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
-  },
+  searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  list: { padding: 16, gap: 10 },
+  row: { flexDirection: "row", gap: 10, marginBottom: 10 },
   emptySlot: { flex: 1, maxWidth: "48%" },
-  emptyState: {
-    alignItems: "center",
-    paddingTop: 80,
-    gap: 10,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontFamily: "Inter_600SemiBold",
-    marginTop: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-  },
+  emptyState: { alignItems: "center", paddingTop: 80, gap: 10 },
+  emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginTop: 8 },
+  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
 });

@@ -14,7 +14,6 @@ interface ParsedLine {
   text: string;
 }
 
-// A render item is either a plain line or a paired chord+strum block
 type RenderItem =
   | ParsedLine
   | { type: "chord-strum"; chord: ParsedLine; strum: ParsedLine };
@@ -60,11 +59,45 @@ interface RiffString { name: string; slots: string }
 
 function parseRiffLine(raw: string): RiffString[] {
   const payload = raw.startsWith("RIFF:") ? raw.slice(5) : raw;
-  return payload.split(":").slice(0, 6).map((part, i) => {
+  const parts = payload.split(":").slice(0, 6);
+  const strings = parts.map((part, i) => {
     const name = RIFF_STRING_NAMES[i] ?? "?";
     const inner = part.replace(/^[a-zA-Z]\|/, "").replace(/\|$/, "");
     return { name, slots: inner };
   });
+  // Pad all strings to same length for aligned display
+  const maxLen = Math.max(...strings.map((s) => s.slots.length), 0);
+  return strings.map((s) => ({
+    ...s,
+    slots: s.slots.length < maxLen
+      ? s.slots + "-".repeat(maxLen - s.slots.length)
+      : s.slots,
+  }));
+}
+
+// ─── ChordPro helpers ─────────────────────────────────────────────────────────
+const CHORD_PRO_RE = /\[([A-G][#b]?[^\]]*)\]/;
+
+function hasChordPro(text: string): boolean {
+  return CHORD_PRO_RE.test(text);
+}
+
+interface ChordProSeg { chord: string | null; text: string }
+
+function parseChordPro(text: string): ChordProSeg[] {
+  const result: ChordProSeg[] = [];
+  const re = /\[([^\]]+)\]([^\[]*)/g;
+  const firstBracket = text.indexOf("[");
+
+  if (firstBracket < 0) return [{ chord: null, text }];
+  if (firstBracket > 0) result.push({ chord: null, text: text.slice(0, firstBracket) });
+
+  re.lastIndex = firstBracket;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    result.push({ chord: m[1], text: m[2] });
+  }
+  return result;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -76,7 +109,6 @@ export function ChordViewer({ content }: ChordViewerProps) {
     return content.split("\n").map((line) => ({ type: parseLine(line), text: line }));
   }, [content]);
 
-  // Pair consecutive chord+strum lines into a single render item
   const renderItems = useMemo<RenderItem[]>(() => {
     const items: RenderItem[] = [];
     let i = 0;
@@ -108,7 +140,6 @@ export function ChordViewer({ content }: ChordViewerProps) {
     >
       <View style={styles.container}>
         {renderItems.map((item, idx) => {
-          // ── Empty spacer ──────────────────────────────────────────────────
           if (item.type === "empty") return <View key={idx} style={styles.spacer} />;
 
           // ── Section header ────────────────────────────────────────────────
@@ -127,32 +158,24 @@ export function ChordViewer({ content }: ChordViewerProps) {
             const beats = parseStrumBeats(paired.strum.text.trim());
             const numChords = chords.length;
             const numBeats  = beats.length;
-
-            // Distribute beats evenly across chords
             const groups: StrumBeat[][] = chords.map((_, ci) => {
               const start = Math.round((ci * numBeats) / numChords);
               const end   = Math.round(((ci + 1) * numBeats) / numChords);
               return beats.slice(start, end);
             });
-
             return (
               <View
                 key={idx}
                 style={[
                   styles.chordStrumBlock,
-                  {
-                    backgroundColor: `${colors.primary}09`,
-                    borderColor: `${colors.primary}22`,
-                  },
+                  { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` },
                 ]}
               >
                 {groups.map((groupBeats, ci) => (
                   <View key={ci} style={styles.chordGroup}>
-                    {/* Chord name */}
                     <Text style={[styles.chordGroupName, { color: colors.accent }]}>
                       {chords[ci]}
                     </Text>
-                    {/* Beat symbols for this chord */}
                     <View style={styles.chordGroupBeats}>
                       {groupBeats.map((beat, bi) => (
                         <Text
@@ -160,10 +183,7 @@ export function ChordViewer({ content }: ChordViewerProps) {
                           style={[
                             styles.chordGroupBeat,
                             {
-                              color:
-                                beat === "-" ? `${colors.border}`
-                                : beat === "x" ? colors.destructive
-                                : colors.primary,
+                              color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary,
                               opacity: beat === "-" ? 0.4 : 1,
                             },
                           ]}
@@ -172,9 +192,8 @@ export function ChordViewer({ content }: ChordViewerProps) {
                         </Text>
                       ))}
                     </View>
-                    {/* Divider between chord groups */}
                     {ci < chords.length - 1 && (
-                      <Text style={[styles.chordGroupDiv, { color: `${colors.border}` }]}>│</Text>
+                      <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
                     )}
                   </View>
                 ))}
@@ -182,7 +201,7 @@ export function ChordViewer({ content }: ChordViewerProps) {
             );
           }
 
-          // ── Plain chord line (no paired strum) ────────────────────────────
+          // ── Plain chord line ──────────────────────────────────────────────
           if (item.type === "chord") {
             return (
               <Text key={idx} style={[styles.chordLine, { color: colors.accent }]}>
@@ -200,7 +219,7 @@ export function ChordViewer({ content }: ChordViewerProps) {
             );
           }
 
-          // ── Strum (standalone — no preceding chord line) ──────────────────
+          // ── Strum (standalone) ────────────────────────────────────────────
           if (item.type === "strum") {
             const beats = parseStrumBeats((item as ParsedLine).text.trim());
             return (
@@ -211,23 +230,16 @@ export function ChordViewer({ content }: ChordViewerProps) {
                   { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` },
                 ]}
               >
-                <Text style={[styles.strumLabel, { color: `${colors.primary}88` }]}>
-                  strum
-                </Text>
+                <Text style={[styles.strumLabel, { color: `${colors.primary}88` }]}>strum</Text>
                 <View style={styles.strumBeats}>
                   {beats.map((beat, bi) => (
                     <React.Fragment key={bi}>
-                      {bi === 4 && (
-                        <Text style={[styles.strumBarChar, { color: colors.border }]}>│</Text>
-                      )}
+                      {bi === 4 && <Text style={[styles.strumBarChar, { color: colors.border }]}>│</Text>}
                       <Text
                         style={[
                           styles.strumSymbol,
                           {
-                            color:
-                              beat === "-" ? colors.border
-                              : beat === "x" ? colors.destructive
-                              : colors.primary,
+                            color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary,
                             opacity: beat === "-" ? 0.4 : 1,
                           },
                         ]}
@@ -275,10 +287,33 @@ export function ChordViewer({ content }: ChordViewerProps) {
             );
           }
 
-          // ── Lyric ─────────────────────────────────────────────────────────
+          // ── Lyric (with optional ChordPro inline chords) ──────────────────
+          const lyricText = (item as ParsedLine).text;
+          if (hasChordPro(lyricText)) {
+            const segs = parseChordPro(lyricText);
+            return (
+              <View key={idx} style={styles.chordProRow}>
+                {segs.map((seg, si) => (
+                  <View key={si} style={styles.chordProSeg}>
+                    <View style={styles.chordProNameBox}>
+                      {seg.chord ? (
+                        <Text style={[styles.chordProName, { color: colors.accent }]}>
+                          {seg.chord}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={[styles.lyricLine, { color: colors.foreground }]}>
+                      {seg.text || (si === segs.length - 1 ? "" : " ")}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            );
+          }
+
           return (
             <Text key={idx} style={[styles.lyricLine, { color: colors.foreground }]}>
-              {(item as ParsedLine).text || " "}
+              {lyricText || " "}
             </Text>
           );
         })}
@@ -311,6 +346,27 @@ const styles = StyleSheet.create({
     fontSize: 15, fontFamily: "Inter_400Regular", lineHeight: 24,
   },
 
+  // ── ChordPro ───────────────────────────────────────────────────────────────
+  chordProRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-end",
+    marginVertical: 2,
+  },
+  chordProSeg: {
+    alignItems: "flex-start",
+  },
+  chordProNameBox: {
+    height: 18,
+    justifyContent: "flex-end",
+  },
+  chordProName: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
+    lineHeight: 17,
+  },
+
   // ── Chord + Strum paired block ─────────────────────────────────────────────
   chordStrumBlock: {
     flexDirection: "row",
@@ -320,34 +376,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 8,
     marginVertical: 4,
-    gap: 0,
   },
-  chordGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  chordGroupName: {
-    fontSize: 15,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.3,
-    minWidth: 28,
-  },
-  chordGroupBeats: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  chordGroupBeat: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  chordGroupDiv: {
-    fontSize: 18,
-    fontFamily: "Inter_400Regular",
-    opacity: 0.35,
-    marginHorizontal: 6,
-  },
+  chordGroup: { flexDirection: "row", alignItems: "center", gap: 5 },
+  chordGroupName: { fontSize: 15, fontFamily: "Inter_700Bold", letterSpacing: 0.3, minWidth: 28 },
+  chordGroupBeats: { flexDirection: "row", alignItems: "center", gap: 3 },
+  chordGroupBeat: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  chordGroupDiv: { fontSize: 18, fontFamily: "Inter_400Regular", opacity: 0.35, marginHorizontal: 6 },
 
   // ── Standalone strum ───────────────────────────────────────────────────────
   strumContainer: {
@@ -356,10 +390,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 6,
     marginVertical: 3, gap: 10,
   },
-  strumLabel: {
-    fontSize: 9, fontFamily: "Inter_700Bold",
-    letterSpacing: 1.2, textTransform: "uppercase",
-  },
+  strumLabel: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.2, textTransform: "uppercase" },
   strumBeats: { flexDirection: "row", alignItems: "center", gap: 6 },
   strumBarChar: { fontSize: 16, opacity: 0.4, marginHorizontal: 2 },
   strumSymbol: { fontSize: 16, fontFamily: "Inter_600SemiBold" },

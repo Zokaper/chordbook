@@ -16,6 +16,7 @@ export interface Song {
   tempo: string;
   tags: string[];
   content: string;
+  chordVariants: Record<string, string>; // chord name → selected ChordFingering id
   createdAt: string;
   updatedAt: string;
 }
@@ -60,6 +61,9 @@ function migrate(raw: unknown): { songs: Song[]; changed: boolean } {
       tempo: rest.tempo ?? "",
       tags,
       content: rest.content ?? "",
+      chordVariants: (rest.chordVariants && typeof rest.chordVariants === "object" && !Array.isArray(rest.chordVariants))
+        ? rest.chordVariants as Record<string, string>
+        : {},
       createdAt: rest.createdAt ?? new Date().toISOString(),
       updatedAt: rest.updatedAt ?? rest.createdAt ?? new Date().toISOString(),
     } as Song;
@@ -103,6 +107,7 @@ export function SongProvider({ children }: { children: React.ReactNode }) {
       const song: Song = {
         ...data,
         tags: data.tags ?? [],
+        chordVariants: data.chordVariants ?? {},
         id:
           Date.now().toString() + Math.random().toString(36).substring(2, 9),
         createdAt: now,

@@ -20,6 +20,22 @@ import { useSettings, type SortBy } from "@/context/SettingsContext";
 import { Song, useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
 
+const CHORD_TOKEN_RE =
+  /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
+
+function songContainsChord(content: string, query: string): boolean {
+  const q = query.toLowerCase();
+  for (const line of content.split("\n")) {
+    if (line.startsWith("[")) continue;
+    const chordPro = [...line.matchAll(/\[([A-G][#b]?[^\]]*)\]/g)].map((m) => m[1]);
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
+    const isChordLine = tokens.length > 0 && tokens.every((t) => CHORD_TOKEN_RE.test(t));
+    const candidates = isChordLine ? tokens : chordPro;
+    if (candidates.some((c) => c.toLowerCase().includes(q))) return true;
+  }
+  return false;
+}
+
 const SORT_LABELS: Record<SortBy, string> = {
   recent: "Recent",
   title: "Title",
@@ -44,7 +60,8 @@ export default function LibraryScreen() {
         !q ||
         s.title.toLowerCase().includes(q) ||
         s.artist.toLowerCase().includes(q) ||
-        s.tags.some((t) => t.toLowerCase().includes(q));
+        s.tags.some((t) => t.toLowerCase().includes(q)) ||
+        songContainsChord(s.content, q);
       const matchesTag = !activeTag || s.tags.includes(activeTag);
       return matchesSearch && matchesTag;
     });

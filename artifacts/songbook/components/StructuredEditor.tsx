@@ -2,15 +2,16 @@
  * StructuredEditor
  *
  * Section-based song editor with five line types:
- *   chord  — amber chips, tap to edit inline with saved-chord suggestions
- *   lyric  — plain text rows
+ *   chord  — amber chips from chord library only; tap to pick/replace
+ *   lyric  — plain text (supports ChordPro [Am]word notation)
  *   strum  — 8-beat tap grid (↓ ↑ ↕ ✕ —)
  *   riff   — 6-string visual fret grid (tap cell → pick fret 0-9)
- *   note   — italic annotation (capo, feel, technique hints)
+ *   note   — italic annotation
  *
- * Serialisation prefixes: STRUM:D,U,-,DU,x,...  |  NOTE:text  |  RIFF:e|...|:B|...|:...:E|...|
+ * Serialisation: STRUM:D,U,-,...  |  NOTE:text  |  RIFF:e|...|:...:E|...|
  */
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Pressable,
@@ -30,14 +31,13 @@ export type StrumBeat = "-" | "D" | "U" | "DU" | "x";
 type ChordLine = { id: string; type: "chord"; chords: string[] };
 type LyricLine = { id: string; type: "lyric"; text: string };
 type StrumLine = { id: string; type: "strum"; beats: StrumBeat[] };
-// grid[stringIdx][slotIdx] = fret (0-9) or null; stringIdx 0 = high e
 type RiffLine  = { id: string; type: "riff";  grid: (number | null)[][]; numSlots: number };
 type NoteLine  = { id: string; type: "note";  text: string };
 
 type SongLine = ChordLine | LyricLine | StrumLine | RiffLine | NoteLine;
 type Section  = { id: string; name: string; lines: SongLine[] };
 
-type EditingChord = { sectionId: string; lineId: string; idx: number; value: string; autoFocus?: boolean };
+type ChordPickerState = { sectionId: string; lineId: string; replaceIdx: number | null } | null;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const genId = () =>
@@ -100,7 +100,6 @@ function parseRiff(raw: string): { grid: (number | null)[][]; numSlots: number }
     grid[i] = slots;
   });
 
-  // Pad all strings to same length
   grid.forEach((str, i) => {
     while (str.length < numSlots) str.push(null);
     grid[i] = str.slice(0, numSlots);
@@ -140,14 +139,12 @@ export function parseContent(raw: string): Section[] {
       const { grid, numSlots } = parseRiff(line);
       current.lines.push({ id: genId(), type: "riff", grid, numSlots });
     } else if (TAB_LINE_RE.test(line.trim())) {
-      // Legacy tab lines: convert to a single-string riff grid
       const inner = line.trim().replace(/^[eEADGBb]\|/, "").replace(/\|$/, "");
       const frets = [...inner].map((c) =>
         c === "-" ? null : /\d/.test(c) ? parseInt(c, 10) : null
       );
       const numSlots = Math.max(frets.length, DEFAULT_SLOTS);
       const grid = makeEmptyGrid(numSlots);
-      // Put it on high e (index 0)
       frets.forEach((f, i) => { if (i < numSlots) grid[0][i] = f; });
       current.lines.push({ id: genId(), type: "riff", grid, numSlots });
     } else if (isChordLine(line)) {
@@ -191,11 +188,6 @@ const SECTION_PRESETS = [
   "Chorus", "Bridge", "Outro", "Solo",
 ];
 
-const FALLBACK_CHORDS = [
-  "Am", "Em", "G", "C", "D", "F", "Dm", "E", "A", "Bm", "B",
-  "F#m", "D7", "G7", "Am7", "Cmaj7",
-];
-
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface Props {
   content: string;
@@ -208,12 +200,12 @@ export function StructuredEditor({ content, onChange }: Props) {
   const { chords: savedChords } = useChords();
 
   const [sections, setSections] = useState<Section[]>(() => parseContent(content));
-  const [editingChord, setEditingChord] = useState<EditingChord | null>(null);
+  const [chordPicker, setChordPicker] = useState<ChordPickerState>(null);
+  const [pickerFilter, setPickerFilter] = useState("");
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
   const isFirstRender = useRef(true);
-  const suggestionSelectedRef = useRef(false);
 
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
@@ -232,6 +224,7 @@ export function StructuredEditor({ content, onChange }: Props) {
 
   // ── Line mutations ─────────────────────────────────────────────────────────
   const addLine = (sectionId: string, type: SongLine["type"]) => {
+    setChordPicker(null);
     setSections((prev) =>
       prev.map((s) => {
         if (s.id !== sectionId) return s;
@@ -246,10 +239,14 @@ export function StructuredEditor({ content, onChange }: Props) {
         return { ...s, lines: [...s.lines, newLine] };
       })
     );
+    // Auto-open chord picker for new chord lines
+    if (type === "chord") {
+      // We'll open the picker after state settles; find the new line id via a ref trick
+    }
   };
 
   const deleteLine = (sectionId: string, lineId: string) => {
-    if (editingChord?.lineId === lineId) setEditingChord(null);
+    if (chordPicker?.lineId === lineId) setChordPicker(null);
     setSections((prev) =>
       prev.map((s) =>
         s.id !== sectionId ? s : { ...s, lines: s.lines.filter((l) => l.id !== lineId) }
@@ -321,9 +318,15 @@ export function StructuredEditor({ content, onChange }: Props) {
       })
     );
 
-  // ── Chord chip mutations ───────────────────────────────────────────────────
-  const applyChordEdit = (sectionId: string, lineId: string, idx: number, value: string) => {
-    const trimmed = value.trim();
+  // ── Chord picker mutations ─────────────────────────────────────────────────
+  const openChordPicker = (sectionId: string, lineId: string, replaceIdx: number | null) => {
+    setPickerFilter("");
+    setChordPicker({ sectionId, lineId, replaceIdx });
+  };
+
+  const commitChordFromPicker = (chordName: string) => {
+    if (!chordPicker) return;
+    const { sectionId, lineId, replaceIdx } = chordPicker;
     setSections((prev) =>
       prev.map((s) => {
         if (s.id !== sectionId) return s;
@@ -332,18 +335,22 @@ export function StructuredEditor({ content, onChange }: Props) {
           lines: s.lines.map((l) => {
             if (l.id !== lineId || l.type !== "chord") return l;
             const next = [...l.chords];
-            if (trimmed === "") next.splice(idx, 1);
-            else next[idx] = trimmed;
+            if (replaceIdx === null) {
+              next.push(chordName);
+            } else {
+              next[replaceIdx] = chordName;
+            }
             return { ...l, chords: next };
           }),
         };
       })
     );
-    setEditingChord(null);
+    setChordPicker(null);
+    setPickerFilter("");
   };
 
-  const deleteChord = (sectionId: string, lineId: string, idx: number) => {
-    if (editingChord?.idx === idx && editingChord?.lineId === lineId) setEditingChord(null);
+  const removeChordAtIdx = (sectionId: string, lineId: string, idx: number) => {
+    if (chordPicker?.lineId === lineId) setChordPicker(null);
     setSections((prev) =>
       prev.map((s) => {
         if (s.id !== sectionId) return s;
@@ -360,41 +367,13 @@ export function StructuredEditor({ content, onChange }: Props) {
     );
   };
 
-  const startAddChord = (sectionId: string, lineId: string) => {
-    if (editingChord) {
-      applyChordEdit(editingChord.sectionId, editingChord.lineId, editingChord.idx, editingChord.value);
-    }
-    setSections((prev) => {
-      const updated = prev.map((s) => {
-        if (s.id !== sectionId) return s;
-        return {
-          ...s,
-          lines: s.lines.map((l) => {
-            if (l.id !== lineId || l.type !== "chord") return l;
-            return { ...l, chords: [...l.chords, ""] };
-          }),
-        };
-      });
-      const sec = updated.find((s) => s.id === sectionId);
-      const line = sec?.lines.find((l) => l.id === lineId);
-      if (line && line.type === "chord") {
-        setEditingChord({ sectionId, lineId, idx: line.chords.length - 1, value: "", autoFocus: false });
-      }
-      return updated;
-    });
-  };
-
-  const suggestChord = (chord: string) => {
-    if (!editingChord) return;
-    setEditingChord({ ...editingChord, value: chord });
-    applyChordEdit(editingChord.sectionId, editingChord.lineId, editingChord.idx, chord);
-  };
+  // ── Filtered library chords for picker ────────────────────────────────────
+  const uniqueChordNames = Array.from(new Set(savedChords.map((c) => c.name)));
+  const filteredPickerChords = pickerFilter.trim()
+    ? uniqueChordNames.filter((n) => n.toLowerCase().includes(pickerFilter.toLowerCase()))
+    : uniqueChordNames;
 
   // ── Render ────────────────────────────────────────────────────────────────
-  const suggestions = savedChords.length > 0
-    ? savedChords.map((c) => c.name)
-    : FALLBACK_CHORDS;
-
   return (
     <View style={{ gap: 14 }}>
       {sections.length === 0 && !showSectionPicker && (
@@ -408,7 +387,6 @@ export function StructuredEditor({ content, onChange }: Props) {
 
       {sections.map((section) => {
         const isEditingName = editingSectionId === section.id;
-        const activeLine = editingChord?.sectionId === section.id ? editingChord.lineId : null;
 
         return (
           <View
@@ -452,46 +430,25 @@ export function StructuredEditor({ content, onChange }: Props) {
               )}
 
               {section.lines.map((line) => {
+                const pickerOpen = chordPicker?.lineId === line.id;
+
                 // ── Chord line ──
                 if (line.type === "chord") {
                   return (
                     <View key={line.id}>
                       <View style={styles.lineRow}>
                         <View style={styles.chordChips}>
-                          {line.chords.map((chord, idx) => {
-                            const isEditing =
-                              editingChord?.lineId === line.id && editingChord.idx === idx;
-                            return isEditing ? (
-                              <ChordEditInput
-                                key={`${line.id}-${idx}`}
-                                value={editingChord.value}
-                                autoFocus={editingChord.autoFocus ?? true}
-                                onChange={(v) => setEditingChord({ ...editingChord, value: v })}
-                                onBlur={() => {
-                                  if (suggestionSelectedRef.current) {
-                                    suggestionSelectedRef.current = false;
-                                    return;
-                                  }
-                                  applyChordEdit(section.id, line.id, idx, editingChord.value);
-                                }}
-                                onCommit={() => applyChordEdit(section.id, line.id, idx, editingChord.value)}
-                                onDelete={() => deleteChord(section.id, line.id, idx)}
-                                colors={colors}
-                              />
-                            ) : (
-                              <ChordChip
-                                key={`${line.id}-${idx}`}
-                                chord={chord || "?"}
-                                onPress={() =>
-                                  setEditingChord({ sectionId: section.id, lineId: line.id, idx, value: chord, autoFocus: true })
-                                }
-                                onLongPress={() => deleteChord(section.id, line.id, idx)}
-                                colors={colors}
-                              />
-                            );
-                          })}
+                          {line.chords.map((chord, idx) => (
+                            <ChordChip
+                              key={`${line.id}-${idx}`}
+                              chord={chord || "?"}
+                              onPress={() => openChordPicker(section.id, line.id, idx)}
+                              onLongPress={() => removeChordAtIdx(section.id, line.id, idx)}
+                              colors={colors}
+                            />
+                          ))}
                           <Pressable
-                            onPress={() => startAddChord(section.id, line.id)}
+                            onPress={() => openChordPicker(section.id, line.id, null)}
                             style={({ pressed }) => [
                               styles.addChordBtn,
                               { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
@@ -503,35 +460,21 @@ export function StructuredEditor({ content, onChange }: Props) {
                         <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
                       </View>
 
-                      {activeLine === line.id && (
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          keyboardShouldPersistTaps="always"
-                          style={styles.suggestScroll}
-                          contentContainerStyle={styles.suggestList}
-                        >
-                          {suggestions.map((name) => (
-                            <Pressable
-                              key={name}
-                              onPressIn={() => {
-                                suggestionSelectedRef.current = true;
-                                suggestChord(name);
-                              }}
-                              style={({ pressed }) => [
-                                styles.suggestChip,
-                                {
-                                  backgroundColor: pressed ? colors.primary : colors.secondary,
-                                  borderColor: colors.border,
-                                },
-                              ]}
-                            >
-                              <Text style={[styles.suggestText, { color: colors.foreground }]}>
-                                {name}
-                              </Text>
-                            </Pressable>
-                          ))}
-                        </ScrollView>
+                      {/* ── Chord Picker Panel ── */}
+                      {pickerOpen && (
+                        <ChordPickerPanel
+                          filter={pickerFilter}
+                          onFilterChange={setPickerFilter}
+                          chordNames={filteredPickerChords}
+                          hasLibrary={savedChords.length > 0}
+                          onSelect={commitChordFromPicker}
+                          onClose={() => setChordPicker(null)}
+                          onCreateNew={() => {
+                            setChordPicker(null);
+                            router.push("/chord-editor");
+                          }}
+                          colors={colors}
+                        />
                       )}
                     </View>
                   );
@@ -541,15 +484,17 @@ export function StructuredEditor({ content, onChange }: Props) {
                 if (line.type === "lyric") {
                   return (
                     <View key={line.id} style={styles.lineRow}>
-                      <TextInput
-                        style={[styles.lyricInput, { color: colors.foreground }]}
-                        value={line.text}
-                        onChangeText={(v) => updateText(section.id, line.id, v)}
-                        placeholder="Lyrics…"
-                        placeholderTextColor={colors.mutedForeground}
-                        multiline
-                        blurOnSubmit={false}
-                      />
+                      <View style={{ flex: 1 }}>
+                        <TextInput
+                          style={[styles.lyricInput, { color: colors.foreground }]}
+                          value={line.text}
+                          onChangeText={(v) => updateText(section.id, line.id, v)}
+                          placeholder="Lyrics… or [Am]chord over words"
+                          placeholderTextColor={colors.mutedForeground}
+                          multiline
+                          blurOnSubmit={false}
+                        />
+                      </View>
                       <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
                     </View>
                   );
@@ -659,7 +604,7 @@ export function StructuredEditor({ content, onChange }: Props) {
               >
                 {(
                   [
-                    { type: "chord", icon: "music",     label: "Chords" },
+                    { type: "chord", icon: "music",      label: "Chords" },
                     { type: "lyric", icon: "align-left", label: "Lyrics" },
                     { type: "strum", icon: "activity",   label: "Strum"  },
                     { type: "riff",  icon: "sliders",    label: "Riff"   },
@@ -734,6 +679,207 @@ export function StructuredEditor({ content, onChange }: Props) {
   );
 }
 
+// ─── ChordPickerPanel ──────────────────────────────────────────────────────────
+interface ChordPickerPanelProps {
+  filter: string;
+  onFilterChange: (v: string) => void;
+  chordNames: string[];
+  hasLibrary: boolean;
+  onSelect: (name: string) => void;
+  onClose: () => void;
+  onCreateNew: () => void;
+  colors: ColorsLike;
+}
+
+function ChordPickerPanel({
+  filter, onFilterChange, chordNames, hasLibrary,
+  onSelect, onClose, onCreateNew, colors,
+}: ChordPickerPanelProps) {
+  return (
+    <View
+      style={[
+        pickerStyles.panel,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      {hasLibrary ? (
+        <>
+          <View
+            style={[
+              pickerStyles.filterRow,
+              { backgroundColor: colors.secondary, borderColor: colors.border },
+            ]}
+          >
+            <Feather name="search" size={13} color={colors.mutedForeground} />
+            <TextInput
+              style={[pickerStyles.filterInput, { color: colors.foreground }]}
+              value={filter}
+              onChangeText={onFilterChange}
+              placeholder="Search chords…"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {filter.length > 0 && (
+              <Pressable onPress={() => onFilterChange("")}>
+                <Feather name="x" size={13} color={colors.mutedForeground} />
+              </Pressable>
+            )}
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="always"
+            contentContainerStyle={pickerStyles.chipRow}
+          >
+            {chordNames.length > 0 ? (
+              chordNames.map((name) => (
+                <Pressable
+                  key={name}
+                  onPress={() => onSelect(name)}
+                  style={({ pressed }) => [
+                    pickerStyles.chip,
+                    {
+                      backgroundColor: pressed ? colors.primary : `${colors.primary}18`,
+                      borderColor: `${colors.primary}55`,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      pickerStyles.chipText,
+                      { color: colors.primary, fontFamily: "Inter_700Bold" },
+                    ]}
+                  >
+                    {name}
+                  </Text>
+                </Pressable>
+              ))
+            ) : (
+              <Text style={[pickerStyles.noMatch, { color: colors.mutedForeground }]}>
+                No match in library
+              </Text>
+            )}
+            <Pressable
+              onPress={onCreateNew}
+              style={({ pressed }) => [
+                pickerStyles.chip,
+                pickerStyles.newChordBtn,
+                {
+                  backgroundColor: pressed ? `${colors.primary}22` : "transparent",
+                  borderColor: colors.border,
+                  borderStyle: "dashed" as const,
+                },
+              ]}
+            >
+              <Feather name="plus" size={12} color={colors.mutedForeground} />
+              <Text style={[pickerStyles.chipText, { color: colors.mutedForeground }]}>
+                New chord
+              </Text>
+            </Pressable>
+          </ScrollView>
+        </>
+      ) : (
+        <View style={pickerStyles.emptyLibrary}>
+          <Text style={[pickerStyles.emptyLibText, { color: colors.mutedForeground }]}>
+            No chords in your library yet.
+          </Text>
+          <Pressable
+            onPress={onCreateNew}
+            style={({ pressed }) => [
+              pickerStyles.goCreateBtn,
+              { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Feather name="plus" size={14} color={colors.primaryForeground} />
+            <Text style={[pickerStyles.goCreateText, { color: colors.primaryForeground }]}>
+              Create first chord
+            </Text>
+          </Pressable>
+        </View>
+      )}
+      <Pressable onPress={onClose} style={pickerStyles.closeBtn} hitSlop={8}>
+        <Feather name="x" size={14} color={colors.mutedForeground} />
+      </Pressable>
+    </View>
+  );
+}
+
+const pickerStyles = StyleSheet.create({
+  panel: {
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 4,
+    marginBottom: 4,
+    padding: 10,
+    gap: 8,
+  },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  filterInput: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    paddingVertical: 0,
+  },
+  chipRow: {
+    gap: 6,
+    paddingVertical: 2,
+    alignItems: "center",
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  chipText: {
+    fontSize: 13,
+  },
+  newChordBtn: {},
+  noMatch: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    paddingHorizontal: 4,
+  },
+  emptyLibrary: {
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 6,
+  },
+  emptyLibText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+  goCreateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  goCreateText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  closeBtn: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+  },
+});
+
 // ─── RiffEditorGrid ────────────────────────────────────────────────────────────
 interface RiffEditorGridProps {
   grid: (number | null)[][];
@@ -753,7 +899,6 @@ function RiffEditorGrid({
 
   const handleCellPress = (si: number, sli: number) => {
     if (selected && selected[0] === si && selected[1] === sli) {
-      // Tap same cell twice → deselect
       setSelected(null);
     } else {
       setSelected([si, sli]);
@@ -841,7 +986,6 @@ function RiffEditorGrid({
         </View>
       </ScrollView>
 
-      {/* Fret picker */}
       {selected !== null && (
         <View style={riffStyles.picker}>
           {FRET_OPTIONS.map((f) => (
@@ -850,15 +994,10 @@ function RiffEditorGrid({
               onPress={() => handleFretPick(f)}
               style={({ pressed }) => [
                 riffStyles.fretBtn,
-                {
-                  backgroundColor: pressed ? colors.primary : colors.secondary,
-                  borderColor: colors.border,
-                },
+                { backgroundColor: pressed ? colors.primary : colors.secondary, borderColor: colors.border },
               ]}
             >
-              <Text style={[riffStyles.fretBtnText, { color: colors.foreground }]}>
-                {f}
-              </Text>
+              <Text style={[riffStyles.fretBtnText, { color: colors.foreground }]}>{f}</Text>
             </Pressable>
           ))}
           <Pressable
@@ -876,7 +1015,6 @@ function RiffEditorGrid({
         </View>
       )}
 
-      {/* Slot controls */}
       <View style={riffStyles.slotControls}>
         <Pressable
           onPress={onRemoveSlot}
@@ -901,10 +1039,7 @@ const riffStyles = StyleSheet.create({
   root: { flex: 1, gap: 6, paddingVertical: 4 },
   grid: { gap: 3 },
   stringRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  strLabel: {
-    width: 14, fontSize: 11, fontFamily: "Inter_600SemiBold",
-    textAlign: "right", opacity: 0.7,
-  },
+  strLabel: { width: 14, fontSize: 11, fontFamily: "Inter_600SemiBold", textAlign: "right", opacity: 0.7 },
   slots: { flexDirection: "row", alignItems: "center", gap: 2 },
   barDiv: { width: 1.5, height: 22, borderRadius: 1, marginHorizontal: 1 },
   cell: {
@@ -912,22 +1047,16 @@ const riffStyles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   cellText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  picker: {
-    flexDirection: "row", flexWrap: "wrap", gap: 6,
-    paddingTop: 2, paddingLeft: 18,
-  },
+  picker: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingTop: 2, paddingLeft: 18 },
   fretBtn: {
     width: 32, height: 32, borderRadius: 8, borderWidth: 1,
     alignItems: "center", justifyContent: "center",
   },
   fretBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  slotControls: {
-    flexDirection: "row", gap: 6, paddingLeft: 18, paddingTop: 2,
-  },
+  slotControls: { flexDirection: "row", gap: 6, paddingLeft: 18, paddingTop: 2 },
   slotBtn: {
     flexDirection: "row", alignItems: "center", gap: 3,
-    borderRadius: 8, borderWidth: 1,
-    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4,
   },
   slotBtnText: { fontSize: 11, fontFamily: "Inter_400Regular" },
 });
@@ -936,6 +1065,7 @@ const riffStyles = StyleSheet.create({
 interface ColorsLike {
   primary: string; primaryForeground: string; secondary: string;
   foreground: string; mutedForeground: string; border: string; destructive: string;
+  card: string;
 }
 
 function LineDeleteBtn({ onPress, colors }: { onPress: () => void; colors: ColorsLike }) {
@@ -975,35 +1105,6 @@ function ChordChip({ chord, onPress, onLongPress, colors }: {
   );
 }
 
-function ChordEditInput({ value, autoFocus, onChange, onBlur, onCommit, onDelete, colors }: {
-  value: string; autoFocus?: boolean; onChange: (v: string) => void;
-  onBlur: () => void; onCommit: () => void; onDelete: () => void; colors: ColorsLike;
-}) {
-  return (
-    <View style={[styles.chordEditWrap, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-      <TextInput
-        style={[styles.chordEditInput, { color: colors.primaryForeground }]}
-        value={value}
-        onChangeText={onChange}
-        onBlur={onBlur}
-        onSubmitEditing={onCommit}
-        autoFocus={autoFocus}
-        autoCapitalize="none"
-        autoCorrect={false}
-        selectTextOnFocus
-        returnKeyType="done"
-        placeholder="?"
-        placeholderTextColor={`${colors.primaryForeground}88`}
-      />
-      {value.length > 0 && (
-        <Pressable onPress={onDelete} hitSlop={6}>
-          <Feather name="x" size={11} color={colors.primaryForeground} />
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   emptyHint: { alignItems: "center", gap: 10, paddingVertical: 32 },
@@ -1026,31 +1127,16 @@ const styles = StyleSheet.create({
 
   lineRow: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 36 },
 
-  // Chord
   chordChips: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" },
   chordChip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
   chordChipText: { fontSize: 14, fontFamily: "Inter_700Bold" },
-  chordEditWrap: {
-    flexDirection: "row", alignItems: "center",
-    borderRadius: 8, borderWidth: 1,
-    paddingHorizontal: 8, paddingVertical: 4, gap: 4, minWidth: 52,
-  },
-  chordEditInput: { fontSize: 14, fontFamily: "Inter_700Bold", minWidth: 36, paddingVertical: 0 },
   addChordBtn: {
     borderRadius: 8, borderWidth: 1, borderStyle: "dashed",
     width: 28, height: 28, alignItems: "center", justifyContent: "center",
   },
 
-  // Suggestions
-  suggestScroll: { marginTop: 4, marginBottom: 4 },
-  suggestList: { gap: 6, paddingVertical: 2 },
-  suggestChip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
-  suggestText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-
-  // Lyric
   lyricInput: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", paddingVertical: 6, lineHeight: 20 },
 
-  // Strum
   strumRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 4 },
   strumBarDiv: { width: 1.5, height: 28, borderRadius: 1, marginHorizontal: 2 },
   strumBeat: {
@@ -1059,14 +1145,12 @@ const styles = StyleSheet.create({
   },
   strumBeatText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 
-  // Note
   noteLineRow: { alignItems: "flex-start", gap: 6 },
   noteInput: {
     flex: 1, fontSize: 13, fontFamily: "Inter_400Regular",
     fontStyle: "italic", paddingVertical: 4, lineHeight: 18,
   },
 
-  // Add line
   addLineRow: { borderTopWidth: 1 },
   addLineScroll: { paddingHorizontal: 10, paddingVertical: 10, gap: 8 },
   addLineBtn: {
@@ -1075,7 +1159,6 @@ const styles = StyleSheet.create({
   },
   addLineBtnText: { fontSize: 12, fontFamily: "Inter_500Medium" },
 
-  // Add section
   addSectionBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 8, paddingVertical: 16, borderRadius: 14, borderWidth: 1.5, borderStyle: "dashed",
