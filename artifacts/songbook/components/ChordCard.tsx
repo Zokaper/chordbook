@@ -11,9 +11,10 @@ interface ChordCardProps {
   chord: ChordFingering;
   onLongPress?: (id: string) => void;
   songCount?: number;
+  variationCount?: number;
 }
 
-export function ChordCard({ chord, onLongPress, songCount }: ChordCardProps) {
+export function ChordCard({ chord, onLongPress, songCount, variationCount }: ChordCardProps) {
   const colors = useColors();
 
   const handlePress = () => {
@@ -50,13 +51,22 @@ export function ChordCard({ chord, onLongPress, songCount }: ChordCardProps) {
           gridColor={colors.border}
         />
       </View>
-      {!!songCount && songCount > 0 && (
-        <View style={[styles.badge, { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}33` }]}>
-          <Text style={[styles.badgeText, { color: colors.primary }]}>
-            {songCount} {songCount === 1 ? "song" : "songs"}
-          </Text>
-        </View>
-      )}
+      <View style={styles.badges}>
+        {!!variationCount && variationCount > 1 && (
+          <View style={[styles.badge, { backgroundColor: `${colors.foreground}11`, borderColor: `${colors.border}` }]}>
+            <Text style={[styles.badgeText, { color: colors.mutedForeground }]}>
+              {variationCount} variations
+            </Text>
+          </View>
+        )}
+        {!!songCount && songCount > 0 && (
+          <View style={[styles.badge, { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}33` }]}>
+            <Text style={[styles.badgeText, { color: colors.primary }]}>
+              {songCount} {songCount === 1 ? "song" : "songs"}
+            </Text>
+          </View>
+        )}
+      </View>
     </Pressable>
   );
 }
@@ -75,6 +85,7 @@ const styles = StyleSheet.create({
   diagram: {
     alignItems: "center",
   },
+  badges: { flexDirection: "row", flexWrap: "wrap", gap: 4, justifyContent: "center" },
   badge: {
     borderRadius: 20,
     borderWidth: 1,

@@ -35,6 +35,11 @@ function chordsInContent(content: string): Set<string> {
   return names;
 }
 
+interface ChordGroup {
+  name: string;
+  chords: ChordFingering[];
+}
+
 export default function ChordsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -57,18 +62,31 @@ export default function ChordsScreen() {
     return counts;
   }, [songs]);
 
-  const filtered = chords.filter((c: ChordFingering) =>
-    !search || c.name.toLowerCase().includes(search.toLowerCase())
-  );
+  // Group chords by name (one card per unique name)
+  const groups: ChordGroup[] = useMemo(() => {
+    const filtered = chords.filter(
+      (c: ChordFingering) => !search || c.name.toLowerCase().includes(search.toLowerCase())
+    );
+    const map = new Map<string, ChordFingering[]>();
+    for (const c of filtered) {
+      const arr = map.get(c.name) ?? [];
+      arr.push(c);
+      map.set(c.name, arr);
+    }
+    return Array.from(map.values()).map((arr) => ({ name: arr[0].name, chords: arr }));
+  }, [chords, search]);
 
-  const handleDelete = (id: string) => {
-    Alert.alert("Delete Chord", "Remove this chord from your library?", [
+  const handleDeleteGroup = (group: ChordGroup) => {
+    const label = group.chords.length > 1
+      ? `Delete "${group.name}" and all ${group.chords.length} variations?`
+      : `Remove "${group.name}" from your library?`;
+    Alert.alert("Delete Chord", label, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          await deleteChord(id);
+          for (const c of group.chords) await deleteChord(c.id);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         },
       },
@@ -80,21 +98,23 @@ export default function ChordsScreen() {
     router.push("/chord-editor");
   };
 
-  const renderItem = ({ item, index }: { item: ChordFingering; index: number }) => {
+  const renderItem = ({ item, index }: { item: ChordGroup; index: number }) => {
     if (index % 2 !== 0) return null;
-    const next = filtered[index + 1];
+    const next = groups[index + 1];
     return (
       <View style={styles.row}>
         <ChordCard
-          chord={item}
-          onLongPress={handleDelete}
+          chord={item.chords[0]}
+          onLongPress={() => handleDeleteGroup(item)}
           songCount={songCountByName[item.name] ?? 0}
+          variationCount={item.chords.length}
         />
         {next ? (
           <ChordCard
-            chord={next}
-            onLongPress={handleDelete}
+            chord={next.chords[0]}
+            onLongPress={() => handleDeleteGroup(next)}
             songCount={songCountByName[next.name] ?? 0}
+            variationCount={next.chords.length}
           />
         ) : (
           <View style={styles.emptySlot} />
@@ -102,6 +122,8 @@ export default function ChordsScreen() {
       </View>
     );
   };
+
+  const uniqueNames = groups.length;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -112,7 +134,8 @@ export default function ChordsScreen() {
           <View>
             <Text style={[styles.title, { color: colors.foreground }]}>My Chords</Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              {chords.length} {chords.length === 1 ? "chord" : "chords"} saved
+              {uniqueNames} {uniqueNames === 1 ? "chord" : "chords"}
+              {chords.length > uniqueNames ? ` · ${chords.length} total fingerings` : ""}
             </Text>
           </View>
           <Pressable
@@ -148,8 +171,8 @@ export default function ChordsScreen() {
       </View>
 
       <FlatList
-        data={filtered}
-        keyExtractor={(c) => c.id}
+        data={groups}
+        keyExtractor={(g) => g.name}
         renderItem={renderItem}
         contentContainerStyle={[styles.list, { paddingBottom: bottomPadding + 32 }]}
         showsVerticalScrollIndicator={false}

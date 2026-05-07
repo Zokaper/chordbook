@@ -487,6 +487,10 @@ export function StructuredEditor({ content, onChange }: Props) {
                             <ChordChip
                               key={`${line.id}-${idx}`}
                               chord={chord || "?"}
+                              active={
+                                chordPicker?.lineId === line.id &&
+                                chordPicker?.replaceIdx === idx
+                              }
                               onPress={() => openChordPicker(section.id, line.id, idx)}
                               onLongPress={() => removeChordAtIdx(section.id, line.id, idx)}
                               colors={colors}
@@ -1256,8 +1260,8 @@ function LineDeleteBtn({ onPress, colors }: { onPress: () => void; colors: Color
   );
 }
 
-function ChordChip({ chord, onPress, onLongPress, colors }: {
-  chord: string; onPress: () => void; onLongPress: () => void; colors: ColorsLike;
+function ChordChip({ chord, active, onPress, onLongPress, colors }: {
+  chord: string; active?: boolean; onPress: () => void; onLongPress: () => void; colors: ColorsLike;
 }) {
   return (
     <Pressable
@@ -1265,13 +1269,24 @@ function ChordChip({ chord, onPress, onLongPress, colors }: {
       onLongPress={onLongPress}
       style={({ pressed }) => [
         styles.chordChip,
+        active && styles.chordChipActive,
         {
-          backgroundColor: pressed ? colors.primary : `${colors.primary}22`,
-          borderColor: `${colors.primary}66`,
+          backgroundColor: active
+            ? colors.primary
+            : pressed ? colors.primary : `${colors.primary}22`,
+          borderColor: active ? colors.primary : `${colors.primary}66`,
+          transform: [{ scale: pressed ? 0.93 : 1 }],
         },
       ]}
     >
-      <Text style={[styles.chordChipText, { color: colors.primary }]}>{chord}</Text>
+      <Text
+        style={[
+          styles.chordChipText,
+          { color: active ? colors.primaryForeground : colors.primary },
+        ]}
+      >
+        {chord}
+      </Text>
     </Pressable>
   );
 }
@@ -1300,6 +1315,7 @@ const styles = StyleSheet.create({
 
   chordChips: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" },
   chordChip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
+  chordChipActive: { shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4, elevation: 3 },
   chordChipText: { fontSize: 14, fontFamily: "Inter_700Bold" },
   addChordBtn: {
     borderRadius: 8, borderWidth: 1, borderStyle: "dashed",
