@@ -28,7 +28,7 @@
       [
         "expo-router",
         {
-          "origin": "https://zokaper.github.io"
+          "origin": "https://zokaper.github.io/chordbook" 
         }
       ],
       "expo-font"
