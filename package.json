@@ -8,7 +8,7 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "predeploy": "pnpm --filter @workspace/songbook run export",
-    "deploy": "gh-pages -d artifacts/songbook/dist"
+    "deploy": "gh-pages -d artifacts/songbook/dist --dotfiles"
   },
   "private": true,
   "devDependencies": {
