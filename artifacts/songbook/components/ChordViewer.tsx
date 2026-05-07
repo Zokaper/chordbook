@@ -1,5 +1,11 @@
 import React, { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+
+const MONO_FONT = Platform.select({
+  ios: "Courier New",
+  android: "monospace",
+  default: "monospace",
+});
 
 import { useColors } from "@/hooks/useColors";
 
@@ -339,8 +345,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5, lineHeight: 22,
   },
   tabLine: {
-    fontSize: 13, fontFamily: "Inter_500Medium",
-    letterSpacing: 0.3, lineHeight: 19,
+    fontSize: 13, fontFamily: MONO_FONT,
+    letterSpacing: 0, lineHeight: 19,
   },
   lyricLine: {
     fontSize: 15, fontFamily: "Inter_400Regular", lineHeight: 24,
@@ -403,7 +409,7 @@ const styles = StyleSheet.create({
   },
   riffRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   riffStrName: { width: 10, fontSize: 11, fontFamily: "Inter_600SemiBold", textAlign: "right" },
-  riffContent: { fontSize: 13, fontFamily: "Inter_500Medium", letterSpacing: 0.3, lineHeight: 20 },
+  riffContent: { fontSize: 13, fontFamily: MONO_FONT, letterSpacing: 0, lineHeight: 20 },
 
   // ── Note ───────────────────────────────────────────────────────────────────
   noteRow: { borderLeftWidth: 2.5, paddingLeft: 10, marginVertical: 2 },

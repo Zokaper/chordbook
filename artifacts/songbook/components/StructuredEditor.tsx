@@ -12,7 +12,7 @@
  */
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -206,6 +206,10 @@ export function StructuredEditor({ content, onChange }: Props) {
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
   const isFirstRender = useRef(true);
+  // Lyric chord-palette state
+  const [focusedLyricLine, setFocusedLyricLine] = useState<{ sectionId: string; lineId: string } | null>(null);
+  const lyricCursorRef = useRef<Record<string, number>>({});
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
@@ -373,6 +377,47 @@ export function StructuredEditor({ content, onChange }: Props) {
     ? uniqueChordNames.filter((n) => n.toLowerCase().includes(pickerFilter.toLowerCase()))
     : uniqueChordNames;
 
+  // ── Chord names already used in this song (for lyric ChordPro palette) ────
+  const songChordNames = useMemo(() => {
+    const names = new Set<string>();
+    sections.forEach((s) =>
+      s.lines.forEach((l) => {
+        if (l.type === "chord") l.chords.forEach((c) => { if (c) names.add(c); });
+      })
+    );
+    return Array.from(names);
+  }, [sections]);
+
+  // ── Lyric focus / chord-insert helpers ───────────────────────────────────
+  const handleLyricFocus = useCallback((sectionId: string, lineId: string) => {
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    setFocusedLyricLine({ sectionId, lineId });
+  }, []);
+
+  const handleLyricBlur = useCallback(() => {
+    focusTimerRef.current = setTimeout(() => setFocusedLyricLine(null), 150);
+  }, []);
+
+  const handleLyricInsertChord = useCallback((sectionId: string, lineId: string, chordName: string) => {
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    const cursor = lyricCursorRef.current[lineId] ?? -1;
+    const tag = `[${chordName}]`;
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          lines: s.lines.map((l) => {
+            if (l.id !== lineId || l.type !== "lyric") return l;
+            const t = l.text;
+            const pos = cursor >= 0 && cursor <= t.length ? cursor : t.length;
+            return { ...l, text: t.slice(0, pos) + tag + t.slice(pos) };
+          }),
+        };
+      })
+    );
+  }, []);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={{ gap: 14 }}>
@@ -482,20 +527,37 @@ export function StructuredEditor({ content, onChange }: Props) {
 
                 // ── Lyric line ──
                 if (line.type === "lyric") {
+                  const lyricFocused =
+                    focusedLyricLine?.lineId === line.id &&
+                    focusedLyricLine?.sectionId === section.id;
                   return (
-                    <View key={line.id} style={styles.lineRow}>
-                      <View style={{ flex: 1 }}>
-                        <TextInput
-                          style={[styles.lyricInput, { color: colors.foreground }]}
-                          value={line.text}
-                          onChangeText={(v) => updateText(section.id, line.id, v)}
-                          placeholder="Lyrics… or [Am]chord over words"
-                          placeholderTextColor={colors.mutedForeground}
-                          multiline
-                          blurOnSubmit={false}
-                        />
+                    <View key={line.id}>
+                      <View style={styles.lineRow}>
+                        <View style={{ flex: 1 }}>
+                          <TextInput
+                            style={[styles.lyricInput, { color: colors.foreground }]}
+                            value={line.text}
+                            onChangeText={(v) => updateText(section.id, line.id, v)}
+                            placeholder="Lyrics… or [Am]chord over words"
+                            placeholderTextColor={colors.mutedForeground}
+                            multiline
+                            blurOnSubmit={false}
+                            onFocus={() => handleLyricFocus(section.id, line.id)}
+                            onBlur={handleLyricBlur}
+                            onSelectionChange={(e) => {
+                              lyricCursorRef.current[line.id] = e.nativeEvent.selection.end;
+                            }}
+                          />
+                        </View>
+                        <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
                       </View>
-                      <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
+                      {lyricFocused && songChordNames.length > 0 && (
+                        <ChordProPalette
+                          chordNames={songChordNames}
+                          onInsert={(name) => handleLyricInsertChord(section.id, line.id, name)}
+                          colors={colors}
+                        />
+                      )}
                     </View>
                   );
                 }
@@ -877,6 +939,76 @@ const pickerStyles = StyleSheet.create({
     position: "absolute",
     top: 10,
     right: 10,
+  },
+});
+
+// ─── ChordProPalette ──────────────────────────────────────────────────────────
+interface ChordProPaletteProps {
+  chordNames: string[];
+  onInsert: (name: string) => void;
+  colors: ColorsLike;
+}
+
+function ChordProPalette({ chordNames, onInsert, colors }: ChordProPaletteProps) {
+  return (
+    <View style={[paletteStyles.wrapper, { borderColor: `${colors.primary}33`, backgroundColor: `${colors.primary}07` }]}>
+      <Text style={[paletteStyles.label, { color: `${colors.primary}99` }]}>Insert chord</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+        contentContainerStyle={paletteStyles.row}
+      >
+        {chordNames.map((name) => (
+          <Pressable
+            key={name}
+            onPress={() => onInsert(name)}
+            style={({ pressed }) => [
+              paletteStyles.chip,
+              {
+                backgroundColor: pressed ? colors.primary : `${colors.primary}18`,
+                borderColor: `${colors.primary}55`,
+              },
+            ]}
+          >
+            <Text style={[paletteStyles.chipText, { color: colors.primary }]}>
+              [{name}]
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const paletteStyles = StyleSheet.create({
+  wrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderTopWidth: 1,
+    paddingVertical: 6,
+    gap: 6,
+    marginTop: 2,
+    paddingLeft: 2,
+  },
+  label: {
+    fontSize: 9,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    flexShrink: 0,
+    paddingLeft: 4,
+  },
+  row: { gap: 5, alignItems: "center" },
+  chip: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  chipText: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
   },
 });
 

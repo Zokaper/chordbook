@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   Platform,
@@ -14,8 +14,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ChordDiagram } from "@/components/ChordDiagram";
 import { ChordDiagramEditor } from "@/components/ChordDiagramEditor";
 import { ChordFingering, useChords } from "@/context/ChordContext";
+import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
 
 type EditorState = Pick<ChordFingering, "strings" | "baseFret" | "barre">;
@@ -26,16 +28,35 @@ const EMPTY: EditorState = {
   barre: undefined,
 };
 
+const CHORD_TOKEN_RE =
+  /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
+
+function songContainsChordName(content: string, chordName: string): boolean {
+  for (const line of content.split("\n")) {
+    if (line.startsWith("[")) continue;
+    const chordPro = [...line.matchAll(/\[([A-G][#b]?[^\]]*)\]/g)].map((m) => m[1]);
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
+    const isChordLine = tokens.length > 0 && tokens.every((t) => CHORD_TOKEN_RE.test(t));
+    const candidates = isChordLine ? tokens : chordPro;
+    if (candidates.includes(chordName)) return true;
+  }
+  return false;
+}
+
+const NUM_FRETS = 4;
+
 export default function ChordEditorScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  // accept both ?id=... (edit) and ?name=... (new with pre-filled name for variations)
+  const { id, name: nameProp } = useLocalSearchParams<{ id?: string; name?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { getChord, createChord, updateChord, deleteChord } = useChords();
+  const { getChord, getChordsByName, createChord, updateChord, deleteChord } = useChords();
+  const { songs } = useSongs();
 
   const existing = id ? getChord(id) : undefined;
   const isEdit = !!existing;
 
-  const [name, setName] = useState(existing?.name ?? "");
+  const [name, setName] = useState(existing?.name ?? nameProp ?? "");
   const [state, setState] = useState<EditorState>(
     existing
       ? { strings: existing.strings, baseFret: existing.baseFret, barre: existing.barre }
@@ -46,9 +67,19 @@ export default function ChordEditorScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
   const canSave = name.trim().length > 0;
-
-  // ~220px keeps string spacing natural (~35px) — not too wide
   const diagramWidth = 220;
+
+  // Other variations (same chord name, different id)
+  const variations: ChordFingering[] = useMemo(() => {
+    if (!isEdit || !existing) return [];
+    return getChordsByName(existing.name).filter((c) => c.id !== id);
+  }, [isEdit, existing, getChordsByName, id]);
+
+  // Songs that use this chord name
+  const songsUsingChord = useMemo(() => {
+    if (!isEdit || !existing) return [];
+    return songs.filter((s) => songContainsChordName(s.content, existing.name));
+  }, [songs, isEdit, existing]);
 
   const handleSave = async () => {
     if (!canSave || saving) return;
@@ -118,6 +149,11 @@ export default function ChordEditorScreen() {
     setState((s) => ({ ...s, strings: [0, 0, 0, 0, 0, 0], barre: undefined }));
   };
 
+  const handleAddVariation = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(`/chord-editor?name=${encodeURIComponent(name.trim())}`);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -145,10 +181,7 @@ export default function ChordEditorScreen() {
           </Pressable>
 
           <TextInput
-            style={[
-              styles.nameInput,
-              { color: colors.foreground, borderColor: colors.primary },
-            ]}
+            style={[styles.nameInput, { color: colors.foreground, borderColor: colors.primary }]}
             placeholder="Name (e.g. Am7, G, Fmaj9)"
             placeholderTextColor={colors.mutedForeground}
             value={name}
@@ -176,10 +209,7 @@ export default function ChordEditorScreen() {
               disabled={!canSave || saving}
               style={({ pressed }) => [
                 styles.saveBtn,
-                {
-                  backgroundColor: canSave ? colors.primary : colors.muted,
-                  opacity: pressed ? 0.8 : 1,
-                },
+                { backgroundColor: canSave ? colors.primary : colors.muted, opacity: pressed ? 0.8 : 1 },
               ]}
             >
               <Text
@@ -201,12 +231,7 @@ export default function ChordEditorScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* ── Interactive Diagram ── */}
-        <View
-          style={[
-            styles.diagramCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
+        <View style={[styles.diagramCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <ChordDiagramEditor
             value={state}
             onChange={setState}
@@ -224,7 +249,6 @@ export default function ChordEditorScreen() {
 
         {/* ── Controls ── */}
         <View style={styles.controls}>
-
           {/* Fret Position */}
           <View style={[styles.controlRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.controlTitle, { color: colors.mutedForeground }]}>Position</Text>
@@ -243,13 +267,11 @@ export default function ChordEditorScreen() {
               >
                 <Feather name="chevron-left" size={20} color={colors.foreground} />
               </Pressable>
-
               <View style={[styles.valueDisplay, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
                 <Text style={[styles.valueText, { color: colors.foreground }]}>
                   {state.baseFret === 1 ? "Open" : `Fret ${state.baseFret}`}
                 </Text>
               </View>
-
               <Pressable
                 onPress={() => shiftFret(1)}
                 disabled={state.baseFret >= 12}
@@ -291,7 +313,6 @@ export default function ChordEditorScreen() {
                   {state.barre ? "On" : "Off"}
                 </Text>
               </Pressable>
-
               {state.barre && (
                 <>
                   <Pressable
@@ -327,155 +348,187 @@ export default function ChordEditorScreen() {
             onPress={handleClear}
             style={({ pressed }) => [
               styles.clearBtn,
-              {
-                backgroundColor: colors.secondary,
-                borderColor: colors.border,
-                opacity: pressed ? 0.7 : 1,
-              },
+              { backgroundColor: colors.secondary, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
             ]}
           >
             <Feather name="refresh-ccw" size={15} color={colors.mutedForeground} />
-            <Text style={[styles.clearBtnText, { color: colors.mutedForeground }]}>
-              Clear diagram
-            </Text>
+            <Text style={[styles.clearBtnText, { color: colors.mutedForeground }]}>Clear diagram</Text>
           </Pressable>
         </View>
+
+        {/* ── Variations ── */}
+        {isEdit && (
+          <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+                Variations of "{existing?.name}"
+              </Text>
+              <Pressable
+                onPress={handleAddVariation}
+                style={({ pressed }) => [
+                  styles.addVariationBtn,
+                  { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}44`, opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Feather name="plus" size={13} color={colors.primary} />
+                <Text style={[styles.addVariationText, { color: colors.primary }]}>Add variation</Text>
+              </Pressable>
+            </View>
+
+            {/* Current variation highlight */}
+            <View style={styles.variationRow}>
+              <View style={[styles.currentVariation, { borderColor: colors.primary, backgroundColor: `${colors.primary}08` }]}>
+                <ChordDiagram
+                  chord={{ ...state, name: name }}
+                  width={72}
+                  showLabel={false}
+                  primaryColor={colors.primary}
+                  textColor={colors.foreground}
+                  gridColor={colors.border}
+                />
+                <View style={[styles.currentBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={[styles.currentBadgeText, { color: colors.primaryForeground }]}>Current</Text>
+                </View>
+              </View>
+
+              {variations.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
+                  <View style={styles.variationScroll}>
+                    {variations.map((v) => (
+                      <Pressable
+                        key={v.id}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          router.replace(`/chord-editor?id=${v.id}`);
+                        }}
+                        style={({ pressed }) => [
+                          styles.variationItem,
+                          { borderColor: colors.border, backgroundColor: colors.secondary, opacity: pressed ? 0.75 : 1 },
+                        ]}
+                      >
+                        <ChordDiagram
+                          chord={v}
+                          width={72}
+                          showLabel={false}
+                          primaryColor={colors.primary}
+                          textColor={colors.foreground}
+                          gridColor={colors.border}
+                        />
+                        <Text style={[styles.editVariationText, { color: colors.mutedForeground }]}>
+                          Edit
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </ScrollView>
+              ) : (
+                <Text style={[styles.noVariationsText, { color: colors.mutedForeground }]}>
+                  Tap "Add variation" to create an alternative fingering
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* ── Songs using this chord ── */}
+        {isEdit && songsUsingChord.length > 0 && (
+          <View style={[styles.section, { borderColor: colors.border, backgroundColor: colors.card }]}>
+            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+              Used in {songsUsingChord.length} {songsUsingChord.length === 1 ? "song" : "songs"}
+            </Text>
+            <View style={styles.songList}>
+              {songsUsingChord.map((song) => (
+                <Pressable
+                  key={song.id}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push(`/song/${song.id}`);
+                  }}
+                  style={({ pressed }) => [
+                    styles.songRow,
+                    { borderColor: colors.border, backgroundColor: pressed ? colors.secondary : "transparent" },
+                  ]}
+                >
+                  <View style={styles.songRowContent}>
+                    <Text style={[styles.songTitle, { color: colors.foreground }]} numberOfLines={1}>
+                      {song.title}
+                    </Text>
+                    {!!song.artist && (
+                      <Text style={[styles.songArtist, { color: colors.mutedForeground }]} numberOfLines={1}>
+                        {song.artist}
+                      </Text>
+                    )}
+                  </View>
+                  <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
 }
 
-const NUM_FRETS = 4;
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  header: { paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
+    width: 38, height: 38, borderRadius: 19,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
   nameInput: {
-    flex: 1,
-    fontSize: 19,
-    fontFamily: "Inter_600SemiBold",
-    borderBottomWidth: 2,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
+    flex: 1, fontSize: 19, fontFamily: "Inter_600SemiBold",
+    borderBottomWidth: 2, paddingVertical: 4, paddingHorizontal: 2,
   },
-  saveBtn: {
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    flexShrink: 0,
+  saveBtn: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, flexShrink: 0 },
+  saveBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  body: { alignItems: "center", paddingTop: 24, paddingHorizontal: 16, gap: 16 },
+  diagramCard: { borderRadius: 20, borderWidth: 1, padding: 16, alignItems: "center" },
+  hint: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 12 },
+  controls: { width: "100%", gap: 10 },
+  controlRow: { borderRadius: 16, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, gap: 10 },
+  controlTitle: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8, textTransform: "uppercase" },
+  controlInner: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  stepBtn: { width: 42, height: 42, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  valueDisplay: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10, minWidth: 100, alignItems: "center" },
+  valueText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  barreToggle: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
+  barreLabel: { fontSize: 15, fontFamily: "Inter_500Medium" },
+  clearBtn: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, alignSelf: "flex-start" },
+  clearBtnText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+
+  // ── Sections ──────────────────────────────────────────────────────────────
+  section: {
+    width: "100%", borderRadius: 16, borderWidth: 1,
+    paddingHorizontal: 16, paddingVertical: 14, gap: 12,
   },
-  saveBtnText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8, textTransform: "uppercase" },
+  addVariationBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    borderRadius: 20, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
   },
-  body: {
-    alignItems: "center",
-    paddingTop: 24,
-    paddingHorizontal: 16,
-    gap: 16,
+  addVariationText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  variationRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, flexWrap: "wrap" },
+  currentVariation: { borderRadius: 12, borderWidth: 2, padding: 8, alignItems: "center", gap: 6 },
+  currentBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  currentBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.5, textTransform: "uppercase" },
+  variationScroll: { flexDirection: "row", gap: 8 },
+  variationItem: { borderRadius: 12, borderWidth: 1, padding: 8, alignItems: "center", gap: 4 },
+  editVariationText: { fontSize: 10, fontFamily: "Inter_500Medium" },
+  noVariationsText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic", lineHeight: 18 },
+
+  // ── Song list ─────────────────────────────────────────────────────────────
+  songList: { gap: 2 },
+  songRow: {
+    flexDirection: "row", alignItems: "center",
+    borderRadius: 10, borderWidth: 1,
+    paddingHorizontal: 12, paddingVertical: 10, gap: 8,
   },
-  diagramCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-    alignItems: "center",
-  },
-  hint: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    paddingHorizontal: 12,
-  },
-  controls: {
-    width: "100%",
-    gap: 10,
-  },
-  controlRow: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  controlTitle: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  controlInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  stepBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  valueDisplay: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    minWidth: 100,
-    alignItems: "center",
-  },
-  valueText: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-  },
-  barreToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  barreLabel: {
-    fontSize: 15,
-    fontFamily: "Inter_500Medium",
-  },
-  clearBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    alignSelf: "flex-start",
-  },
-  clearBtnText: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-  },
+  songRowContent: { flex: 1, gap: 1 },
+  songTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  songArtist: { fontSize: 12, fontFamily: "Inter_400Regular" },
 });
