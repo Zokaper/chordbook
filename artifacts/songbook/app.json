@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Songbook",
-    "slug": "songbook",
+    "name": "Chordbook",
+    "slug": "chordbook",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "songbook",
+    "scheme": "chordbook",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -14,11 +14,15 @@
       "backgroundColor": "#141010"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.chordbook.app"
     },
-    "android": {},
+    "android": {
+      "package": "com.chordbook.app"
+    },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "bundler": "metro",
+      "baseUrl": "/chordbook"
     },
     "plugins": [
       [
