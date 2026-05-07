@@ -518,6 +518,17 @@ export function StructuredEditor({ content, onChange }: Props) {
                             setChordPicker(null);
                             router.push("/chord-editor");
                           }}
+                          onRemove={
+                            chordPicker?.replaceIdx !== null && chordPicker?.replaceIdx !== undefined
+                              ? () => {
+                                  removeChordAtIdx(
+                                    chordPicker.sectionId,
+                                    chordPicker.lineId,
+                                    chordPicker.replaceIdx!
+                                  );
+                                }
+                              : undefined
+                          }
                           colors={colors}
                         />
                       )}
@@ -750,12 +761,13 @@ interface ChordPickerPanelProps {
   onSelect: (name: string) => void;
   onClose: () => void;
   onCreateNew: () => void;
+  onRemove?: () => void;
   colors: ColorsLike;
 }
 
 function ChordPickerPanel({
   filter, onFilterChange, chordNames, hasLibrary,
-  onSelect, onClose, onCreateNew, colors,
+  onSelect, onClose, onCreateNew, onRemove, colors,
 }: ChordPickerPanelProps) {
   return (
     <View
@@ -860,6 +872,20 @@ function ChordPickerPanel({
           </Pressable>
         </View>
       )}
+      {onRemove && (
+        <Pressable
+          onPress={onRemove}
+          style={({ pressed }) => [
+            pickerStyles.removeBtn,
+            { borderColor: `${colors.destructive}55`, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Feather name="trash-2" size={13} color={colors.destructive} />
+          <Text style={[pickerStyles.removeBtnText, { color: colors.destructive }]}>
+            Remove chord
+          </Text>
+        </Pressable>
+      )}
       <Pressable onPress={onClose} style={pickerStyles.closeBtn} hitSlop={8}>
         <Feather name="x" size={14} color={colors.mutedForeground} />
       </Pressable>
@@ -933,6 +959,19 @@ const pickerStyles = StyleSheet.create({
   },
   goCreateText: {
     fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  removeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 7,
+  },
+  removeBtnText: {
+    fontSize: 12,
     fontFamily: "Inter_600SemiBold",
   },
   closeBtn: {
