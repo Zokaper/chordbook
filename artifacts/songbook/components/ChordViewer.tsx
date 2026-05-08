@@ -274,21 +274,24 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             const pairedChords = (item as ParsedLine).pairedChords;
 
             if (pairedChords && pairedChords.length > 0) {
-              // Build chord groups: split beats at "C" markers
-              const groups: { chord: string; groupBeats: StrumBeat[] }[] = [];
-              let currentBeats: StrumBeat[] = [];
-              let chordIdx = 0;
+              // Split beats at "C" (chord-change) markers into segments
+              const segments: StrumBeat[][] = [];
+              let seg: StrumBeat[] = [];
               for (const beat of beats) {
-                if (beat === "C") {
-                  groups.push({ chord: pairedChords[chordIdx % pairedChords.length], groupBeats: currentBeats });
-                  chordIdx++;
-                  currentBeats = [];
-                } else {
-                  currentBeats.push(beat);
-                }
+                if (beat === "C") { segments.push(seg); seg = []; }
+                else seg.push(beat);
               }
-              if (currentBeats.length > 0 || groups.length === 0) {
-                groups.push({ chord: pairedChords[chordIdx % pairedChords.length], groupBeats: currentBeats });
+              segments.push(seg);
+              const firstNonEmpty = segments.find((s) => s.length > 0) ?? [];
+
+              // Each chord gets one segment; if a segment is empty (e.g. trailing ↺),
+              // fall back to the first non-empty segment so every chord is displayed.
+              const groups: { chord: string; groupBeats: StrumBeat[] }[] = pairedChords.map((chord, i) => {
+                const raw = segments[i % segments.length];
+                return { chord, groupBeats: raw && raw.length > 0 ? raw : firstNonEmpty };
+              });
+              if (groups.length === 0) {
+                groups.push({ chord: pairedChords[0] ?? "?", groupBeats: beats.filter((b) => b !== "C") });
               }
 
               return (
