@@ -24,7 +24,7 @@ html = html
 const headTags = [
   `<script>if(location.pathname==="${BASE}/")history.replaceState(null,'','${BASE}'+location.search+location.hash);</script>`,
   `<link rel="manifest" href="${BASE}/manifest.json">`,
-  `<meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf6f2">`,
+  `<meta name="theme-color" content="#faf6f2">`,
   `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141010">`,
   `<meta name="apple-mobile-web-app-capable" content="yes">`,
   `<meta name="apple-mobile-web-app-status-bar-style" content="default">`,
