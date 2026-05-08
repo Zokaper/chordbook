@@ -1,9 +1,9 @@
 import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Reads env(safe-area-inset-top) directly from CSS.
+// Reads env(safe-area-inset-top) from CSS.
 // Returns > 0 only in standalone/installed PWA mode (status bar present, no browser chrome).
-// In a regular browser the value is 0 (the browser manages its own chrome separately).
+// Returns 0 in a regular browser — the browser viewport already sits below its own chrome.
 function readEnvSafeAreaTop(): number {
   if (typeof document === "undefined") return 0;
   try {
@@ -25,12 +25,11 @@ let _cachedWebTop: number | null = null;
 
 function getWebTopPadding(): number {
   if (_cachedWebTop !== null) return _cachedWebTop;
-  if (typeof window === "undefined") return 67;
+  if (typeof window === "undefined") return 0;
 
   const envTop = readEnvSafeAreaTop();
 
-  // env(safe-area-inset-top) > 0 means we're in standalone/installed PWA mode
-  // where only the status bar sits above our content.
+  // env(safe-area-inset-top) > 0 means we're in standalone/installed PWA mode.
   if (envTop > 0) {
     _cachedWebTop = envTop;
     return _cachedWebTop;
@@ -42,15 +41,15 @@ function getWebTopPadding(): number {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window.navigator as any).standalone === true;
 
-  // In standalone mode with no env inset reported, fall back to a sensible
-  // status-bar height so content isn't buried under the status bar.
   if (isStandalone) {
+    // Standalone but no env inset reported — use a reasonable status-bar height
     _cachedWebTop = 24;
     return _cachedWebTop;
   }
 
-  // Regular browser — needs full browser-chrome compensation.
-  _cachedWebTop = 67;
+  // Regular browser — no compensation needed; the viewport already starts
+  // below the browser's own chrome. Visual padding comes from the + 12 in callers.
+  _cachedWebTop = 0;
   return _cachedWebTop;
 }
 
@@ -63,11 +62,13 @@ export function useTopPadding(): number {
 export function useBottomPadding(extra = 0): number {
   const insets = useSafeAreaInsets();
   if (Platform.OS !== "web") return insets.bottom + extra;
+
   const isStandalone =
     typeof window !== "undefined" &&
     (window.matchMedia?.("(display-mode: standalone)").matches ||
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window.navigator as any).standalone === true);
-  const base = isStandalone ? 16 : 34;
+
+  const base = isStandalone ? 16 : 0;
   return base + extra;
 }
