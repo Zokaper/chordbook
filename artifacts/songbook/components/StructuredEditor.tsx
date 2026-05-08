@@ -134,6 +134,18 @@ export function parseContent(raw: string): Section[] {
         BEAT_CYCLE.includes(b as StrumBeat) ? (b as StrumBeat) : "-"
       ) as StrumBeat[];
       while (beats.length < 8) beats.push("-");
+      // Migrate legacy CHORDS:name@beatIdx format → place C beats at change positions
+      const legacyChordsStr = rest.find((p) => p.startsWith("CHORDS:"));
+      if (legacyChordsStr) {
+        legacyChordsStr.slice(7).split(",").forEach((cc) => {
+          const ai = cc.lastIndexOf("@");
+          if (ai < 0) return;
+          const beatIdx = parseInt(cc.slice(ai + 1), 10);
+          if (!isNaN(beatIdx) && beatIdx >= 0 && beatIdx < beats.length) {
+            beats[beatIdx] = "C";
+          }
+        });
+      }
       const repeatStr = rest.find((p) => p.startsWith("REPEAT:"));
       const repeat = repeatStr ? Math.max(1, parseInt(repeatStr.slice(7), 10)) : 1;
       current.lines.push({ id: genId(), type: "strum", beats: beats.slice(0, 8), repeat });

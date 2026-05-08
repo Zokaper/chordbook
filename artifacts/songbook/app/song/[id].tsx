@@ -1,10 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  Alert,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -37,22 +35,30 @@ function extractChordGroups(
   const seen = new Set<string>();
   const result: ChordGroup[] = [];
 
+  const addToken = (token: string) => {
+    if (!seen.has(token)) {
+      seen.add(token);
+      const variants = library.filter((c) => c.name === token);
+      if (variants.length > 0) result.push({ name: token, variants });
+    }
+  };
+
   for (const line of content.split("\n")) {
     if (line.startsWith("[")) continue;
 
-    // Collect chord names from chord lines and ChordPro [chord] markers
-    const chordProMatches = [...line.matchAll(/\[([A-G][#b]?[^\]]*)\]/g)].map((m) => m[1]);
-    const lineTokens = line.trim().split(/\s+/).filter(Boolean);
-    const isChordLine = lineTokens.length > 0 && lineTokens.every((t) => CHORD_TOKEN_RE.test(t));
-    const tokens = isChordLine ? lineTokens : chordProMatches;
-
-    for (const token of tokens) {
-      if (!seen.has(token)) {
-        seen.add(token);
-        const variants = library.filter((c) => c.name === token);
-        if (variants.length > 0) result.push({ name: token, variants });
-      }
+    // New explicit CHORD: prefix format
+    if (line.startsWith("CHORD:")) {
+      line.slice(6).trim().split(/\s+/).filter(Boolean).forEach(addToken);
+      continue;
     }
+
+    // ChordPro [Am]word notation in lyric lines
+    const chordProMatches = [...line.matchAll(/\[([A-G][#b]?[^\]]*)\]/g)].map((m) => m[1]);
+    // Legacy: plain chord line detected by regex
+    const lineTokens = line.trim().split(/\s+/).filter(Boolean);
+    const isLegacyChordLine = lineTokens.length > 0 && lineTokens.every((t) => CHORD_TOKEN_RE.test(t));
+    const tokens = isLegacyChordLine ? lineTokens : chordProMatches;
+    tokens.forEach(addToken);
   }
   return result;
 }
@@ -69,6 +75,8 @@ export default function SongScreen() {
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>(
     song?.chordVariants ?? {}
   );
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const topPadding = useTopPadding();
   const bottomPadding = useBottomPadding();
@@ -103,19 +111,17 @@ export default function SongScreen() {
     router.push(`/editor?id=${song.id}`);
   };
 
-  const handleDelete = () => {
-    Alert.alert("Delete Song", `Delete "${song.title}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await deleteSong(song.id);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          router.back();
-        },
-      },
-    ]);
+  const handleDelete = async () => {
+    if (!deleteConfirm) {
+      setDeleteConfirm(true);
+      deleteTimerRef.current = setTimeout(() => setDeleteConfirm(false), 3000);
+      return;
+    }
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+    setDeleteConfirm(false);
+    await deleteSong(song.id);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.replace("/");
   };
 
   return (
@@ -147,10 +153,19 @@ export default function SongScreen() {
               onPress={handleDelete}
               style={({ pressed }) => [
                 styles.iconButton,
-                { backgroundColor: colors.secondary, opacity: pressed ? 0.7 : 1 },
+                {
+                  backgroundColor: deleteConfirm ? `${colors.destructive}18` : colors.secondary,
+                  borderWidth: deleteConfirm ? 1.5 : 0,
+                  borderColor: deleteConfirm ? colors.destructive : "transparent",
+                  opacity: pressed ? 0.7 : 1,
+                },
               ]}
             >
-              <Feather name="trash-2" size={18} color={colors.destructive} />
+              <Feather
+                name={deleteConfirm ? "check" : "trash-2"}
+                size={18}
+                color={colors.destructive}
+              />
             </Pressable>
             <Pressable
               onPress={handleEdit}

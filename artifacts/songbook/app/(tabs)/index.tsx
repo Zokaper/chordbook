@@ -29,10 +29,16 @@ const CHORD_TOKEN_RE =
 function songContainsExactChord(content: string, chordName: string): boolean {
   for (const line of content.split("\n")) {
     if (line.startsWith("[")) continue;
+    // New explicit CHORD: prefix format
+    if (line.startsWith("CHORD:")) {
+      if (line.slice(6).trim().split(/\s+/).includes(chordName)) return true;
+      continue;
+    }
+    // ChordPro [chord] notation or legacy plain chord lines
     const chordPro = [...line.matchAll(/\[([A-G][#b]?[^\]]*)\]/g)].map((m) => m[1]);
     const tokens = line.trim().split(/\s+/).filter(Boolean);
-    const isChordLine = tokens.length > 0 && tokens.every((t) => CHORD_TOKEN_RE.test(t));
-    const candidates = isChordLine ? tokens : chordPro;
+    const isLegacyChordLine = tokens.length > 0 && tokens.every((t) => CHORD_TOKEN_RE.test(t));
+    const candidates = isLegacyChordLine ? tokens : chordPro;
     if (candidates.includes(chordName)) return true;
   }
   return false;
