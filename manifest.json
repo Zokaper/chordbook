@@ -6,8 +6,8 @@
   "scope": "/chordbook/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#141010",
-  "theme_color": "#141010",
+  "background_color": "#faf6f2",
+  "theme_color": "#faf6f2",
   "icons": [
     {
       "src": "/chordbook/assets/icon.png",
