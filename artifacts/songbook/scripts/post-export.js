@@ -24,15 +24,17 @@ html = html
 const headTags = [
   `<script>if(location.pathname==="${BASE}/")history.replaceState(null,'','${BASE}'+location.search+location.hash);</script>`,
   `<link rel="manifest" href="${BASE}/manifest.json">`,
-  `<meta name="theme-color" content="#141010">`,
+  `<meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf6f2">`,
+  `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141010">`,
   `<meta name="apple-mobile-web-app-capable" content="yes">`,
-  `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`,
+  `<meta name="apple-mobile-web-app-status-bar-style" content="default">`,
   `<meta name="apple-mobile-web-app-title" content="Chordbook">`,
   `<link rel="apple-touch-icon" href="${BASE}/assets/icon.png">`,
   `<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('${BASE}/sw.js',{scope:'${BASE}/'}).catch(function(e){console.warn('SW reg failed',e);});});}</script>`,
 ].join("\n  ");
 
-html = html.replace("</head>", `  ${headTags}\n</head>`);
+const bgStyle = `<style>html,body{background-color:#faf6f2}@media(prefers-color-scheme:dark){html,body{background-color:#141010}}</style>`;
+html = html.replace("</head>", `  ${headTags}\n  ${bgStyle}\n</head>`);
 fs.writeFileSync(indexPath, html);
 
 // ─── 3. Copy app icon into dist/assets ───────────────────────────────────────
@@ -104,8 +106,8 @@ const manifest = {
   scope: `${BASE}/`,
   display: "standalone",
   orientation: "portrait",
-  background_color: "#141010",
-  theme_color: "#141010",
+  background_color: "#faf6f2",
+  theme_color: "#faf6f2",
   icons: [
     { src: `${BASE}/assets/icon.png`, sizes: "192x192", type: "image/png" },
     { src: `${BASE}/assets/icon.png`, sizes: "512x512", type: "image/png", purpose: "any maskable" },
