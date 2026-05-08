@@ -23,6 +23,8 @@ type LineType = "section" | "chord" | "tab" | "strum" | "riff" | "note" | "lyric
 interface ParsedLine {
   type: LineType;
   text: string;
+  pairedChords?: string[];
+  consumed?: boolean;
 }
 
 type RenderItem = ParsedLine;
@@ -37,6 +39,7 @@ function parseLine(line: string): LineType {
   const trimmed = line.trim();
   if (/^\[.+\]$/.test(trimmed)) return "section";
   if (trimmed.startsWith("STRUM:")) return "strum";
+  if (trimmed.startsWith("CHORD:")) return "chord";
   if (trimmed.startsWith("NOTE:"))  return "note";
   if (trimmed.startsWith("RIFF:"))  return "riff";
   if (TAB_LINE_REGEX.test(trimmed)) return "tab";
@@ -46,15 +49,16 @@ function parseLine(line: string): LineType {
 }
 
 // ─── Strum helpers ────────────────────────────────────────────────────────────
-type StrumBeat = "-" | "D" | "U" | "DU" | "x";
+type StrumBeat = "-" | "D" | "U" | "DU" | "x" | "C";
 
 const BEAT_SYMBOL: Record<StrumBeat, string> = {
-  "-": "—", D: "↓", U: "↑", DU: "↕", x: "✕",
+  "-": "—", D: "↓", U: "↑", DU: "↕", x: "✕", C: "↺",
 };
+
+const VALID_BEATS: string[] = ["D", "U", "DU", "x", "-", "C"];
 
 interface StrumData {
   beats: StrumBeat[];
-  chordChanges: { name: string; beatIdx: number }[];
   repeat: number;
 }
 
@@ -63,23 +67,10 @@ function parseStrumData(raw: string): StrumData {
   const [beatsPart, ...rest] = payload.split(";");
   const beats = beatsPart
     .split(",")
-    .map((b) =>
-      (["D", "U", "DU", "x", "-"] as string[]).includes(b) ? (b as StrumBeat) : "-"
-    ) as StrumBeat[];
-  const chordsStr = rest.find((p) => p.startsWith("CHORDS:"));
-  const chordChanges = chordsStr
-    ? chordsStr.slice(7).split(",").flatMap((cc) => {
-        const ai = cc.lastIndexOf("@");
-        if (ai < 0) return [];
-        const name = cc.slice(0, ai);
-        const beatIdx = parseInt(cc.slice(ai + 1), 10);
-        if (!name || isNaN(beatIdx)) return [];
-        return [{ name, beatIdx }];
-      })
-    : [];
+    .map((b) => (VALID_BEATS.includes(b) ? (b as StrumBeat) : "-")) as StrumBeat[];
   const repeatStr = rest.find((p) => p.startsWith("REPEAT:"));
   const repeat = repeatStr ? Math.max(1, parseInt(repeatStr.slice(7), 10)) : 1;
-  return { beats, chordChanges, repeat };
+  return { beats, repeat };
 }
 
 // ─── Riff helpers ─────────────────────────────────────────────────────────────
@@ -169,6 +160,7 @@ const tokenStyles = StyleSheet.create({
   wrap: { alignItems: "center", marginRight: 12 },
   chord: { fontSize: 15, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5 },
   label: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 0.3, marginTop: 1, opacity: 0.75 },
+  warnDot: { fontSize: 9, marginLeft: 2, marginTop: -4 },
 });
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -177,10 +169,23 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
 
   const lines = useMemo<ParsedLine[]>(() => {
     if (!content?.trim()) return [];
-    return content.split("\n").map((line) => ({ type: parseLine(line), text: line }));
+    const raw: ParsedLine[] = content.split("\n").map((line) => ({ type: parseLine(line), text: line }));
+    // Pair chord lines that are immediately followed by a strum line
+    for (let i = 1; i < raw.length; i++) {
+      if (raw[i].type === "strum") {
+        let j = i - 1;
+        while (j >= 0 && raw[j].type === "empty") j--;
+        if (j >= 0 && raw[j].type === "chord") {
+          const chordText = raw[j].text.startsWith("CHORD:") ? raw[j].text.slice(6) : raw[j].text;
+          raw[i] = { ...raw[i], pairedChords: chordText.trim().split(/\s+/).filter(Boolean) };
+          raw[j] = { ...raw[j], consumed: true };
+        }
+      }
+    }
+    return raw;
   }, [content]);
 
-  const renderItems = useMemo<RenderItem[]>(() => lines, [lines]);
+  const renderItems = useMemo<RenderItem[]>(() => lines.filter((l) => !l.consumed), [lines]);
 
   if (!content?.trim()) {
     return (
@@ -211,28 +216,46 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
 
           // ── Plain chord line ──────────────────────────────────────────────
           if (item.type === "chord") {
-            const tokens = (item as ParsedLine).text.trim().split(/\s+/).filter(Boolean);
-            if (capo > 0 && capoMode !== "none") {
-              return (
-                <View key={idx} style={styles.chordTokenRow}>
-                  {tokens.map((chord, ti) => (
-                    <ChordTokenView
-                      key={ti}
-                      chord={chord}
-                      capo={capo}
-                      mode={capoMode}
-                      accentColor={colors.accent}
-                      mutedColor={colors.mutedForeground}
-                      primaryColor={colors.primary}
-                    />
-                  ))}
-                </View>
-              );
-            }
+            const rawText = (item as ParsedLine).text;
+            const chordText = rawText.startsWith("CHORD:") ? rawText.slice(6) : rawText;
+            const tokens = chordText.trim().split(/\s+/).filter(Boolean);
+            const hasNonStandard = tokens.some((t) => !CHORD_TOKEN_REGEX.test(t));
             return (
-              <Text key={idx} style={[styles.chordLine, { color: colors.accent }]}>
-                {tokens.join("  ")}
-              </Text>
+              <View key={idx}>
+                <View style={styles.chordTokenRow}>
+                  {tokens.map((chord, ti) => {
+                    const isStandard = CHORD_TOKEN_REGEX.test(chord);
+                    if (capo > 0 && capoMode !== "none" && isStandard) {
+                      return (
+                        <ChordTokenView
+                          key={ti}
+                          chord={chord}
+                          capo={capo}
+                          mode={capoMode}
+                          accentColor={colors.accent}
+                          mutedColor={colors.mutedForeground}
+                          primaryColor={colors.primary}
+                        />
+                      );
+                    }
+                    return (
+                      <View key={ti} style={[tokenStyles.wrap, { flexDirection: "row", alignItems: "center" }]}>
+                        <Text style={[tokenStyles.chord, { color: isStandard ? colors.accent : colors.primary }]}>
+                          {chord}
+                        </Text>
+                        {!isStandard && (
+                          <Text style={[tokenStyles.warnDot, { color: colors.primary }]}>⚠</Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+                {hasNonStandard && (
+                  <Text style={[styles.chordWarnNote, { color: colors.mutedForeground }]}>
+                    ⚠ Custom chord names — transposing won't work for these
+                  </Text>
+                )}
+              </View>
             );
           }
 
@@ -247,42 +270,42 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
 
           // ── Strum ─────────────────────────────────────────────────────────
           if (item.type === "strum") {
-            const { beats, chordChanges, repeat } = parseStrumData((item as ParsedLine).text.trim());
+            const { beats, repeat } = parseStrumData((item as ParsedLine).text.trim());
+            const pairedChords = (item as ParsedLine).pairedChords;
 
-            if (chordChanges.length > 0) {
-              const sorted = [...chordChanges].sort((a, b) => a.beatIdx - b.beatIdx);
-              const firstIdx = sorted[0].beatIdx;
-              const groups = sorted.map((cc, ci) => ({
-                name: cc.name,
-                groupBeats: beats.slice(cc.beatIdx, sorted[ci + 1]?.beatIdx ?? beats.length),
-              }));
+            if (pairedChords && pairedChords.length > 0) {
+              // Build chord groups: split beats at "C" markers
+              const groups: { chord: string; groupBeats: StrumBeat[] }[] = [];
+              let currentBeats: StrumBeat[] = [];
+              let chordIdx = 0;
+              for (const beat of beats) {
+                if (beat === "C") {
+                  groups.push({ chord: pairedChords[chordIdx % pairedChords.length], groupBeats: currentBeats });
+                  chordIdx++;
+                  currentBeats = [];
+                } else {
+                  currentBeats.push(beat);
+                }
+              }
+              if (currentBeats.length > 0 || groups.length === 0) {
+                groups.push({ chord: pairedChords[chordIdx % pairedChords.length], groupBeats: currentBeats });
+              }
+
               return (
                 <View key={idx}>
                   <View style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
-                    {firstIdx > 0 && (
-                      <View style={styles.chordGroup}>
-                        <View style={styles.chordGroupNameWrap} />
-                        <View style={styles.chordGroupBeats}>
-                          {beats.slice(0, firstIdx).map((beat, bi) => (
-                            <Text key={bi} style={[styles.chordGroupBeat, { color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary, opacity: beat === "-" ? 0.4 : 1 }]}>
-                              {BEAT_SYMBOL[beat]}
-                            </Text>
-                          ))}
-                        </View>
-                        <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
-                      </View>
-                    )}
                     {groups.map((group, ci) => {
-                      const transposed = capo > 0 ? transposeChord(group.name, capo) : null;
-                      const showLabel = transposed !== null && transposed !== group.name;
+                      const isStd = CHORD_TOKEN_REGEX.test(group.chord);
+                      const transposed = capo > 0 && isStd ? transposeChord(group.chord, capo) : null;
+                      const showLabel = transposed !== null && transposed !== group.chord;
                       return (
                         <View key={ci} style={styles.chordGroup}>
                           <View style={styles.chordGroupNameWrap}>
                             {capoMode !== "real" && (
-                              <Text style={[styles.chordGroupName, { color: colors.accent }]}>{group.name}</Text>
+                              <Text style={[styles.chordGroupName, { color: colors.accent }]}>{group.chord}</Text>
                             )}
                             {capoMode === "real" && (
-                              <Text style={[styles.chordGroupName, { color: colors.accent }]}>{showLabel ? transposed : group.name}</Text>
+                              <Text style={[styles.chordGroupName, { color: colors.accent }]}>{showLabel ? transposed : group.chord}</Text>
                             )}
                             {capoMode === "both" && showLabel && (
                               <Text style={[styles.chordGroupTransposed, { color: colors.primary }]}>{transposed}</Text>
@@ -309,7 +332,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
               );
             }
 
-            // Simple strum (no chord changes)
+            // Simple strum (no paired chord line)
             return (
               <View key={idx}>
                 <View style={[styles.strumContainer, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
@@ -318,7 +341,10 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                     {beats.map((beat, bi) => (
                       <React.Fragment key={bi}>
                         {bi === 4 && <Text style={[styles.strumBarChar, { color: colors.border }]}>│</Text>}
-                        <Text style={[styles.strumSymbol, { color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary, opacity: beat === "-" ? 0.4 : 1 }]}>
+                        <Text style={[styles.strumSymbol, {
+                          color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : beat === "C" ? colors.accent : colors.primary,
+                          opacity: beat === "-" ? 0.4 : 1,
+                        }]}>
                           {BEAT_SYMBOL[beat]}
                         </Text>
                       </React.Fragment>
@@ -509,6 +535,7 @@ const styles = StyleSheet.create({
   strumBarChar: { fontSize: 16, opacity: 0.4, marginHorizontal: 2 },
   strumSymbol: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   repeatLabel: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 0.3, textAlign: "right", marginTop: 1, marginBottom: 3 },
+  chordWarnNote: { fontSize: 10, fontFamily: "Inter_400Regular", fontStyle: "italic", marginTop: 2, marginBottom: 2, opacity: 0.7 },
 
   // ── Riff block ─────────────────────────────────────────────────────────────
   riffBlock: {
