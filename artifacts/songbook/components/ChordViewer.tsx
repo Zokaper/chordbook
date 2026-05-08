@@ -25,26 +25,10 @@ interface ParsedLine {
   text: string;
 }
 
-type RenderItem =
-  | ParsedLine
-  | { type: "chord-strum"; chord: ParsedLine; strum: ParsedLine };
+type RenderItem = ParsedLine;
 
 const CHORD_TOKEN_REGEX =
-  /^[A-G][#b]?(maj|min|m|M|dim|aug|sus2|sus4|sus|add|alt)?(\d{1,2})?(\/[A-G][#b]?)?(:\d+)?$/;
-
-function chordTokenName(token: string): string {
-  const c = token.lastIndexOf(":");
-  return c > 0 ? token.slice(0, c) : token;
-}
-
-function chordTokenBeats(token: string): number {
-  const c = token.lastIndexOf(":");
-  if (c > 0) {
-    const n = parseInt(token.slice(c + 1), 10);
-    return isNaN(n) || n < 1 ? 4 : n;
-  }
-  return 4;
-}
+  /^[A-G][#b]?(maj|min|m|M|dim|aug|sus2|sus4|sus|add|alt)?(\d{1,2})?(\/[A-G][#b]?)?$/;
 
 const TAB_LINE_REGEX = /^[eEADGBb]\|/;
 
@@ -68,13 +52,34 @@ const BEAT_SYMBOL: Record<StrumBeat, string> = {
   "-": "—", D: "↓", U: "↑", DU: "↕", x: "✕",
 };
 
-function parseStrumBeats(raw: string): StrumBeat[] {
+interface StrumData {
+  beats: StrumBeat[];
+  chordChanges: { name: string; beatIdx: number }[];
+  repeat: number;
+}
+
+function parseStrumData(raw: string): StrumData {
   const payload = raw.startsWith("STRUM:") ? raw.slice(6) : raw;
-  return payload
+  const [beatsPart, ...rest] = payload.split(";");
+  const beats = beatsPart
     .split(",")
     .map((b) =>
       (["D", "U", "DU", "x", "-"] as string[]).includes(b) ? (b as StrumBeat) : "-"
-    );
+    ) as StrumBeat[];
+  const chordsStr = rest.find((p) => p.startsWith("CHORDS:"));
+  const chordChanges = chordsStr
+    ? chordsStr.slice(7).split(",").flatMap((cc) => {
+        const ai = cc.lastIndexOf("@");
+        if (ai < 0) return [];
+        const name = cc.slice(0, ai);
+        const beatIdx = parseInt(cc.slice(ai + 1), 10);
+        if (!name || isNaN(beatIdx)) return [];
+        return [{ name, beatIdx }];
+      })
+    : [];
+  const repeatStr = rest.find((p) => p.startsWith("REPEAT:"));
+  const repeat = repeatStr ? Math.max(1, parseInt(repeatStr.slice(7), 10)) : 1;
+  return { beats, chordChanges, repeat };
 }
 
 // ─── Riff helpers ─────────────────────────────────────────────────────────────
@@ -175,20 +180,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
     return content.split("\n").map((line) => ({ type: parseLine(line), text: line }));
   }, [content]);
 
-  const renderItems = useMemo<RenderItem[]>(() => {
-    const items: RenderItem[] = [];
-    let i = 0;
-    while (i < lines.length) {
-      if (lines[i].type === "chord" && lines[i + 1]?.type === "strum") {
-        items.push({ type: "chord-strum", chord: lines[i], strum: lines[i + 1] });
-        i += 2;
-      } else {
-        items.push(lines[i]);
-        i++;
-      }
-    }
-    return items;
-  }, [lines]);
+  const renderItems = useMemo<RenderItem[]>(() => lines, [lines]);
 
   if (!content?.trim()) {
     return (
@@ -217,93 +209,13 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             );
           }
 
-          // ── Chord + Strum paired ──────────────────────────────────────────
-          if (item.type === "chord-strum") {
-            const paired = item as { type: "chord-strum"; chord: ParsedLine; strum: ParsedLine };
-            const tokens = paired.chord.text.trim().split(/\s+/).filter(Boolean);
-            const beats = parseStrumBeats(paired.strum.text.trim());
-            const numBeats = beats.length;
-            // Use declared beat counts to assign strum arrows to each chord
-            let offset = 0;
-            const groups = tokens.map((token) => {
-              const name = chordTokenName(token);
-              const declared = chordTokenBeats(token);
-              const start = Math.min(offset, numBeats);
-              const end   = Math.min(offset + declared, numBeats);
-              offset += declared;
-              return { name, groupBeats: beats.slice(start, end) };
-            });
-            // Any trailing beats (total declared < numBeats) go to last group
-            if (offset < numBeats && groups.length > 0) {
-              groups[groups.length - 1].groupBeats = [
-                ...groups[groups.length - 1].groupBeats,
-                ...beats.slice(offset),
-              ];
-            }
-            return (
-              <View
-                key={idx}
-                style={[
-                  styles.chordStrumBlock,
-                  { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` },
-                ]}
-              >
-                {groups.map((group, ci) => {
-                  const transposed = capo > 0 ? transposeChord(group.name, capo) : null;
-                  const showLabel = transposed !== null && transposed !== group.name;
-                  return (
-                    <View key={ci} style={styles.chordGroup}>
-                      <View style={styles.chordGroupNameWrap}>
-                        {capoMode !== "real" && (
-                          <Text style={[styles.chordGroupName, { color: colors.accent }]}>
-                            {group.name}
-                          </Text>
-                        )}
-                        {capoMode === "real" && (
-                          <Text style={[styles.chordGroupName, { color: colors.accent }]}>
-                            {showLabel ? transposed : group.name}
-                          </Text>
-                        )}
-                        {capoMode === "both" && showLabel && (
-                          <Text style={[styles.chordGroupTransposed, { color: colors.primary }]}>
-                            {transposed}
-                          </Text>
-                        )}
-                      </View>
-                      <View style={styles.chordGroupBeats}>
-                        {group.groupBeats.map((beat, bi) => (
-                          <Text
-                            key={bi}
-                            style={[
-                              styles.chordGroupBeat,
-                              {
-                                color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary,
-                                opacity: beat === "-" ? 0.4 : 1,
-                              },
-                            ]}
-                          >
-                            {BEAT_SYMBOL[beat]}
-                          </Text>
-                        ))}
-                      </View>
-                      {ci < groups.length - 1 && (
-                        <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            );
-          }
-
           // ── Plain chord line ──────────────────────────────────────────────
           if (item.type === "chord") {
             const tokens = (item as ParsedLine).text.trim().split(/\s+/).filter(Boolean);
-            const names = tokens.map(chordTokenName);
             if (capo > 0 && capoMode !== "none") {
               return (
                 <View key={idx} style={styles.chordTokenRow}>
-                  {names.map((chord, ti) => (
+                  {tokens.map((chord, ti) => (
                     <ChordTokenView
                       key={ti}
                       chord={chord}
@@ -319,7 +231,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             }
             return (
               <Text key={idx} style={[styles.chordLine, { color: colors.accent }]}>
-                {names.join("  ")}
+                {tokens.join("  ")}
               </Text>
             );
           }
@@ -333,36 +245,89 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             );
           }
 
-          // ── Strum (standalone) ────────────────────────────────────────────
+          // ── Strum ─────────────────────────────────────────────────────────
           if (item.type === "strum") {
-            const beats = parseStrumBeats((item as ParsedLine).text.trim());
-            return (
-              <View
-                key={idx}
-                style={[
-                  styles.strumContainer,
-                  { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` },
-                ]}
-              >
-                <Text style={[styles.strumLabel, { color: `${colors.primary}88` }]}>strum</Text>
-                <View style={styles.strumBeats}>
-                  {beats.map((beat, bi) => (
-                    <React.Fragment key={bi}>
-                      {bi === 4 && <Text style={[styles.strumBarChar, { color: colors.border }]}>│</Text>}
-                      <Text
-                        style={[
-                          styles.strumSymbol,
-                          {
-                            color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary,
-                            opacity: beat === "-" ? 0.4 : 1,
-                          },
-                        ]}
-                      >
-                        {BEAT_SYMBOL[beat]}
-                      </Text>
-                    </React.Fragment>
-                  ))}
+            const { beats, chordChanges, repeat } = parseStrumData((item as ParsedLine).text.trim());
+
+            if (chordChanges.length > 0) {
+              const sorted = [...chordChanges].sort((a, b) => a.beatIdx - b.beatIdx);
+              const firstIdx = sorted[0].beatIdx;
+              const groups = sorted.map((cc, ci) => ({
+                name: cc.name,
+                groupBeats: beats.slice(cc.beatIdx, sorted[ci + 1]?.beatIdx ?? beats.length),
+              }));
+              return (
+                <View key={idx}>
+                  <View style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
+                    {firstIdx > 0 && (
+                      <View style={styles.chordGroup}>
+                        <View style={styles.chordGroupNameWrap} />
+                        <View style={styles.chordGroupBeats}>
+                          {beats.slice(0, firstIdx).map((beat, bi) => (
+                            <Text key={bi} style={[styles.chordGroupBeat, { color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary, opacity: beat === "-" ? 0.4 : 1 }]}>
+                              {BEAT_SYMBOL[beat]}
+                            </Text>
+                          ))}
+                        </View>
+                        <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
+                      </View>
+                    )}
+                    {groups.map((group, ci) => {
+                      const transposed = capo > 0 ? transposeChord(group.name, capo) : null;
+                      const showLabel = transposed !== null && transposed !== group.name;
+                      return (
+                        <View key={ci} style={styles.chordGroup}>
+                          <View style={styles.chordGroupNameWrap}>
+                            {capoMode !== "real" && (
+                              <Text style={[styles.chordGroupName, { color: colors.accent }]}>{group.name}</Text>
+                            )}
+                            {capoMode === "real" && (
+                              <Text style={[styles.chordGroupName, { color: colors.accent }]}>{showLabel ? transposed : group.name}</Text>
+                            )}
+                            {capoMode === "both" && showLabel && (
+                              <Text style={[styles.chordGroupTransposed, { color: colors.primary }]}>{transposed}</Text>
+                            )}
+                          </View>
+                          <View style={styles.chordGroupBeats}>
+                            {group.groupBeats.map((beat, bi) => (
+                              <Text key={bi} style={[styles.chordGroupBeat, { color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary, opacity: beat === "-" ? 0.4 : 1 }]}>
+                                {BEAT_SYMBOL[beat]}
+                              </Text>
+                            ))}
+                          </View>
+                          {ci < groups.length - 1 && (
+                            <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                  {repeat > 1 && (
+                    <Text style={[styles.repeatLabel, { color: `${colors.primary}88` }]}>× {repeat}</Text>
+                  )}
                 </View>
+              );
+            }
+
+            // Simple strum (no chord changes)
+            return (
+              <View key={idx}>
+                <View style={[styles.strumContainer, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
+                  <Text style={[styles.strumLabel, { color: `${colors.primary}88` }]}>strum</Text>
+                  <View style={styles.strumBeats}>
+                    {beats.map((beat, bi) => (
+                      <React.Fragment key={bi}>
+                        {bi === 4 && <Text style={[styles.strumBarChar, { color: colors.border }]}>│</Text>}
+                        <Text style={[styles.strumSymbol, { color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary, opacity: beat === "-" ? 0.4 : 1 }]}>
+                          {BEAT_SYMBOL[beat]}
+                        </Text>
+                      </React.Fragment>
+                    ))}
+                  </View>
+                </View>
+                {repeat > 1 && (
+                  <Text style={[styles.repeatLabel, { color: `${colors.primary}88` }]}>× {repeat}</Text>
+                )}
               </View>
             );
           }
@@ -543,6 +508,7 @@ const styles = StyleSheet.create({
   strumBeats: { flexDirection: "row", alignItems: "center", gap: 6 },
   strumBarChar: { fontSize: 16, opacity: 0.4, marginHorizontal: 2 },
   strumSymbol: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  repeatLabel: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 0.3, textAlign: "right", marginTop: 1, marginBottom: 3 },
 
   // ── Riff block ─────────────────────────────────────────────────────────────
   riffBlock: {
