@@ -14,12 +14,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 
 import { StructuredEditor } from "@/components/StructuredEditor";
 import { TagsField } from "@/components/TagsField";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
 
 const KEYS = [
   "C", "C#", "Db", "D", "D#", "Eb", "E", "F",
@@ -30,7 +31,6 @@ const KEYS = [
 export default function EditorScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { getSong, createSong, updateSong, deleteSong, allTags } = useSongs();
   const isEdit = !!id;
   const existingSong = id ? getSong(id) : undefined;
@@ -43,8 +43,8 @@ export default function EditorScreen() {
   const [content, setContent] = useState(existingSong?.content ?? "");
   const [saving, setSaving] = useState(false);
 
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 + 60 : insets.bottom + 60;
+  const topPadding = useTopPadding();
+  const bottomPadding = useBottomPadding(60);
   const canSave = title.trim().length > 0;
 
   const handleSave = async () => {

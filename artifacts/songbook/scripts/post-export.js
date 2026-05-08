@@ -13,7 +13,12 @@ const indexPath = path.join(distDir, "index.html");
 let html = fs.readFileSync(indexPath, "utf8");
 html = html
   .replace(/href="\/_expo\//g, `href="${BASE}/_expo/`)
-  .replace(/src="\/_expo\//g, `src="${BASE}/_expo/`);
+  .replace(/src="\/_expo\//g, `src="${BASE}/_expo/`)
+  // Restrict zoom in PWA/mobile browser — replaces whatever viewport tag Expo emits
+  .replace(
+    /<meta name="viewport"[^>]*>/,
+    `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no" />`
+  );
 
 // ─── 2. Inject into <head> ────────────────────────────────────────────────────
 const headTags = [

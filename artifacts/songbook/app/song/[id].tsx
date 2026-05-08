@@ -11,13 +11,14 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 
 import { ChordDiagram } from "@/components/ChordDiagram";
 import { ChordViewer } from "@/components/ChordViewer";
 import { ChordFingering, useChords } from "@/context/ChordContext";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
 
 const CHORD_TOKEN_RE =
   /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
@@ -57,7 +58,6 @@ function extractChordGroups(
 export default function SongScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { getSong, deleteSong, updateSong } = useSongs();
   const { chords: chordLibrary } = useChords();
 
@@ -67,8 +67,8 @@ export default function SongScreen() {
     song?.chordVariants ?? {}
   );
 
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const topPadding = useTopPadding();
+  const bottomPadding = useBottomPadding();
 
   if (!song) {
     return (

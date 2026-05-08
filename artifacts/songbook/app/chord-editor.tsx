@@ -12,13 +12,14 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 
 import { ChordDiagram } from "@/components/ChordDiagram";
 import { ChordDiagramEditor } from "@/components/ChordDiagramEditor";
 import { ChordFingering, useChords } from "@/context/ChordContext";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
+import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
 
 type EditorState = Pick<ChordFingering, "strings" | "baseFret" | "barre">;
 
@@ -49,7 +50,6 @@ export default function ChordEditorScreen() {
   // accept both ?id=... (edit) and ?name=... (new with pre-filled name for variations)
   const { id, name: nameProp } = useLocalSearchParams<{ id?: string; name?: string }>();
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { getChord, getChordsByName, createChord, updateChord, deleteChord } = useChords();
   const { songs } = useSongs();
 
@@ -64,8 +64,8 @@ export default function ChordEditorScreen() {
   );
   const [saving, setSaving] = useState(false);
 
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const topPadding = useTopPadding();
+  const bottomPadding = useBottomPadding();
   const canSave = name.trim().length > 0;
   const diagramWidth = 220;
 
