@@ -21,8 +21,13 @@ html = html
   );
 
 // ─── 2. Inject into <head> ────────────────────────────────────────────────────
+// Inline script that runs synchronously before React renders, reads the saved
+// theme from localStorage and sets theme-color to the correct value immediately.
+const themeInitScript = `<script>(function(){try{var s=JSON.parse(localStorage.getItem('songbook_settings_v1')||'{}');var t=s.theme||'system';var dark=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme:dark)').matches);var c=dark?'#141010':'#faf6f2';document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute('content',c);});}catch(e){}})();</script>`;
+
 const headTags = [
   `<script>if(location.pathname==="${BASE}/")history.replaceState(null,'','${BASE}'+location.search+location.hash);</script>`,
+  themeInitScript,
   `<link rel="manifest" href="${BASE}/manifest.json">`,
   `<meta name="theme-color" content="#faf6f2">`,
   `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141010">`,

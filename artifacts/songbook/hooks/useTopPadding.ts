@@ -61,14 +61,14 @@ export function useTabScreenBottomPadding(extra = 0): number {
 
 /**
  * Syncs the document theme-color meta tag to the given color.
+ * Uses setAttribute (more broadly supported than .content assignment).
  * No-op on native.
  */
 export function useThemeColorSync(color: string): void {
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
-    const meta = document.querySelector(
-      'meta[name="theme-color"]:not([media])'
-    ) as HTMLMetaElement | null;
-    if (meta) meta.content = color;
+    document
+      .querySelectorAll('meta[name="theme-color"]')
+      .forEach((el) => el.setAttribute("content", color));
   }, [color]);
 }
