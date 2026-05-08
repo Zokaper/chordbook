@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  Alert,
+
   Platform,
   Pressable,
   ScrollView,
@@ -63,6 +63,7 @@ export default function ChordEditorScreen() {
       : EMPTY
   );
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const topPadding = useTopPadding();
   const bottomPadding = useBottomPadding();
@@ -101,20 +102,11 @@ export default function ChordEditorScreen() {
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!id) return;
-    Alert.alert("Delete Chord", "Remove this chord from your library?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await deleteChord(id);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          router.back();
-        },
-      },
-    ]);
+    await deleteChord(id);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.back();
   };
 
   const shiftFret = (delta: number) => {
@@ -169,6 +161,7 @@ export default function ChordEditorScreen() {
           },
         ]}
       >
+        {/* Row 1: back + actions always visible */}
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => router.back()}
@@ -180,22 +173,34 @@ export default function ChordEditorScreen() {
             <Feather name="x" size={20} color={colors.foreground} />
           </Pressable>
 
-          <TextInput
-            style={[styles.nameInput, { color: colors.foreground, borderColor: colors.primary }]}
-            placeholder="Name (e.g. Am7, G, Fmaj9)"
-            placeholderTextColor={colors.mutedForeground}
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="done"
-            autoFocus={!isEdit}
-          />
+          <View style={{ flex: 1 }} />
 
-          <View style={styles.headerRight}>
-            {isEdit && (
+          {isEdit && (
+            confirmDelete ? (
+              <>
+                <Text style={[styles.confirmText, { color: colors.destructive }]}>Delete?</Text>
+                <Pressable
+                  onPress={handleDelete}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    { backgroundColor: `${colors.destructive}22`, opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Feather name="check" size={18} color={colors.destructive} />
+                </Pressable>
+                <Pressable
+                  onPress={() => setConfirmDelete(false)}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    { backgroundColor: colors.secondary, opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Feather name="x" size={18} color={colors.mutedForeground} />
+                </Pressable>
+              </>
+            ) : (
               <Pressable
-                onPress={handleDelete}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setConfirmDelete(true); }}
                 style={({ pressed }) => [
                   styles.iconBtn,
                   { backgroundColor: colors.secondary, opacity: pressed ? 0.7 : 1 },
@@ -203,26 +208,40 @@ export default function ChordEditorScreen() {
               >
                 <Feather name="trash-2" size={18} color={colors.destructive} />
               </Pressable>
-            )}
-            <Pressable
-              onPress={handleSave}
-              disabled={!canSave || saving}
-              style={({ pressed }) => [
-                styles.saveBtn,
-                { backgroundColor: canSave ? colors.primary : colors.muted, opacity: pressed ? 0.8 : 1 },
+            )
+          )}
+
+          <Pressable
+            onPress={handleSave}
+            disabled={!canSave || saving}
+            style={({ pressed }) => [
+              styles.saveBtn,
+              { backgroundColor: canSave ? colors.primary : colors.muted, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Text
+              style={[
+                styles.saveBtnText,
+                { color: canSave ? colors.primaryForeground : colors.mutedForeground },
               ]}
             >
-              <Text
-                style={[
-                  styles.saveBtnText,
-                  { color: canSave ? colors.primaryForeground : colors.mutedForeground },
-                ]}
-              >
-                {saving ? "Saving…" : "Save"}
-              </Text>
-            </Pressable>
-          </View>
+              {saving ? "Saving…" : "Save"}
+            </Text>
+          </Pressable>
         </View>
+
+        {/* Row 2: name input full-width */}
+        <TextInput
+          style={[styles.nameInput, { color: colors.foreground, borderColor: colors.primary }]}
+          placeholder="Name (e.g. Am7, G, Fmaj9)"
+          placeholderTextColor={colors.mutedForeground}
+          value={name}
+          onChangeText={setName}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="done"
+          autoFocus={!isEdit}
+        />
       </View>
 
       <ScrollView
@@ -472,15 +491,15 @@ export default function ChordEditorScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  header: { paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, gap: 10 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   iconBtn: {
     width: 38, height: 38, borderRadius: 19,
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
+  confirmText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   nameInput: {
-    flex: 1, fontSize: 19, fontFamily: "Inter_600SemiBold",
+    fontSize: 19, fontFamily: "Inter_600SemiBold",
     borderBottomWidth: 2, paddingVertical: 4, paddingHorizontal: 2,
   },
   saveBtn: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, flexShrink: 0 },

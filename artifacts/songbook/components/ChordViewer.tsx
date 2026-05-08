@@ -30,7 +30,21 @@ type RenderItem =
   | { type: "chord-strum"; chord: ParsedLine; strum: ParsedLine };
 
 const CHORD_TOKEN_REGEX =
-  /^[A-G][#b]?(maj|min|m|M|dim|aug|sus2|sus4|sus|add|alt)?(\d{1,2})?(\/[A-G][#b]?)?$/;
+  /^[A-G][#b]?(maj|min|m|M|dim|aug|sus2|sus4|sus|add|alt)?(\d{1,2})?(\/[A-G][#b]?)?(:\d+)?$/;
+
+function chordTokenName(token: string): string {
+  const c = token.lastIndexOf(":");
+  return c > 0 ? token.slice(0, c) : token;
+}
+
+function chordTokenBeats(token: string): number {
+  const c = token.lastIndexOf(":");
+  if (c > 0) {
+    const n = parseInt(token.slice(c + 1), 10);
+    return isNaN(n) || n < 1 ? 4 : n;
+  }
+  return 4;
+}
 
 const TAB_LINE_REGEX = /^[eEADGBb]\|/;
 
@@ -206,15 +220,26 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
           // ── Chord + Strum paired ──────────────────────────────────────────
           if (item.type === "chord-strum") {
             const paired = item as { type: "chord-strum"; chord: ParsedLine; strum: ParsedLine };
-            const chords = paired.chord.text.trim().split(/\s+/).filter(Boolean);
+            const tokens = paired.chord.text.trim().split(/\s+/).filter(Boolean);
             const beats = parseStrumBeats(paired.strum.text.trim());
-            const numChords = chords.length;
-            const numBeats  = beats.length;
-            const groups: StrumBeat[][] = chords.map((_, ci) => {
-              const start = Math.round((ci * numBeats) / numChords);
-              const end   = Math.round(((ci + 1) * numBeats) / numChords);
-              return beats.slice(start, end);
+            const numBeats = beats.length;
+            // Use declared beat counts to assign strum arrows to each chord
+            let offset = 0;
+            const groups = tokens.map((token) => {
+              const name = chordTokenName(token);
+              const declared = chordTokenBeats(token);
+              const start = Math.min(offset, numBeats);
+              const end   = Math.min(offset + declared, numBeats);
+              offset += declared;
+              return { name, groupBeats: beats.slice(start, end) };
             });
+            // Any trailing beats (total declared < numBeats) go to last group
+            if (offset < numBeats && groups.length > 0) {
+              groups[groups.length - 1].groupBeats = [
+                ...groups[groups.length - 1].groupBeats,
+                ...beats.slice(offset),
+              ];
+            }
             return (
               <View
                 key={idx}
@@ -223,20 +248,20 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                   { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` },
                 ]}
               >
-                {groups.map((groupBeats, ci) => {
-                  const transposed = capo > 0 ? transposeChord(chords[ci], capo) : null;
-                  const showLabel = transposed !== null && transposed !== chords[ci];
+                {groups.map((group, ci) => {
+                  const transposed = capo > 0 ? transposeChord(group.name, capo) : null;
+                  const showLabel = transposed !== null && transposed !== group.name;
                   return (
                     <View key={ci} style={styles.chordGroup}>
                       <View style={styles.chordGroupNameWrap}>
                         {capoMode !== "real" && (
                           <Text style={[styles.chordGroupName, { color: colors.accent }]}>
-                            {chords[ci]}
+                            {group.name}
                           </Text>
                         )}
                         {capoMode === "real" && (
                           <Text style={[styles.chordGroupName, { color: colors.accent }]}>
-                            {showLabel ? transposed : chords[ci]}
+                            {showLabel ? transposed : group.name}
                           </Text>
                         )}
                         {capoMode === "both" && showLabel && (
@@ -246,7 +271,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                         )}
                       </View>
                       <View style={styles.chordGroupBeats}>
-                        {groupBeats.map((beat, bi) => (
+                        {group.groupBeats.map((beat, bi) => (
                           <Text
                             key={bi}
                             style={[
@@ -261,7 +286,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                           </Text>
                         ))}
                       </View>
-                      {ci < chords.length - 1 && (
+                      {ci < groups.length - 1 && (
                         <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
                       )}
                     </View>
@@ -274,10 +299,11 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
           // ── Plain chord line ──────────────────────────────────────────────
           if (item.type === "chord") {
             const tokens = (item as ParsedLine).text.trim().split(/\s+/).filter(Boolean);
+            const names = tokens.map(chordTokenName);
             if (capo > 0 && capoMode !== "none") {
               return (
                 <View key={idx} style={styles.chordTokenRow}>
-                  {tokens.map((chord, ti) => (
+                  {names.map((chord, ti) => (
                     <ChordTokenView
                       key={ti}
                       chord={chord}
@@ -293,7 +319,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             }
             return (
               <Text key={idx} style={[styles.chordLine, { color: colors.accent }]}>
-                {(item as ParsedLine).text}
+                {names.join("  ")}
               </Text>
             );
           }

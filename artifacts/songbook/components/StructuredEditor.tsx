@@ -28,7 +28,8 @@ import { useColors } from "@/hooks/useColors";
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type StrumBeat = "-" | "D" | "U" | "DU" | "x";
 
-type ChordLine = { id: string; type: "chord"; chords: string[] };
+export type ChordEntry = { name: string; beats: number };
+type ChordLine = { id: string; type: "chord"; chords: ChordEntry[] };
 type LyricLine = { id: string; type: "lyric"; text: string };
 type StrumLine = { id: string; type: "strum"; beats: StrumBeat[] };
 type RiffLine  = { id: string; type: "riff";  grid: (number | null)[][]; numSlots: number };
@@ -64,10 +65,27 @@ function makeEmptyGrid(numSlots: number): (number | null)[][] {
   return STRING_NAMES.map(() => Array(numSlots).fill(null));
 }
 
+function stripBeatSuffix(token: string): string {
+  const colonIdx = token.lastIndexOf(":");
+  return colonIdx > 0 ? token.slice(0, colonIdx) : token;
+}
+
 function isChordLine(line: string) {
   const tokens = line.trim().split(/\s+/).filter(Boolean);
-  return tokens.length > 0 && tokens.every((t) => CHORD_RE.test(t));
+  return tokens.length > 0 && tokens.every((t) => CHORD_RE.test(stripBeatSuffix(t)));
 }
+
+function parseChordEntry(token: string): ChordEntry {
+  const colonIdx = token.lastIndexOf(":");
+  if (colonIdx > 0) {
+    const name = token.slice(0, colonIdx);
+    const beats = parseInt(token.slice(colonIdx + 1), 10);
+    return { name, beats: isNaN(beats) || beats < 1 ? 4 : beats };
+  }
+  return { name: token, beats: 4 };
+}
+
+const BEAT_COUNT_CYCLE = [1, 2, 4, 8];
 
 // ─── RIFF serialise / parse ───────────────────────────────────────────────────
 export function serializeRiff(grid: (number | null)[][], numSlots: number): string {
@@ -151,7 +169,7 @@ export function parseContent(raw: string): Section[] {
       current.lines.push({
         id: genId(),
         type: "chord",
-        chords: line.trim().split(/\s+/).filter(Boolean),
+        chords: line.trim().split(/\s+/).filter(Boolean).map(parseChordEntry),
       });
     } else {
       current.lines.push({ id: genId(), type: "lyric", text: line });
@@ -171,7 +189,7 @@ export function serializeContent(sections: Section[]): string {
           return l.text.trim() !== "";
         })
         .map((l) => {
-          if (l.type === "chord") return l.chords.join("  ");
+          if (l.type === "chord") return l.chords.map((c) => `${c.name}:${c.beats}`).join("  ");
           if (l.type === "strum") return `STRUM:${l.beats.join(",")}`;
           if (l.type === "note")  return `NOTE:${l.text}`;
           if (l.type === "riff")  return serializeRiff(l.grid, l.numSlots);
@@ -340,9 +358,9 @@ export function StructuredEditor({ content, onChange }: Props) {
             if (l.id !== lineId || l.type !== "chord") return l;
             const next = [...l.chords];
             if (replaceIdx === null) {
-              next.push(chordName);
+              next.push({ name: chordName, beats: 4 });
             } else {
-              next[replaceIdx] = chordName;
+              next[replaceIdx] = { ...next[replaceIdx], name: chordName };
             }
             return { ...l, chords: next };
           }),
@@ -351,6 +369,26 @@ export function StructuredEditor({ content, onChange }: Props) {
     );
     setChordPicker(null);
     setPickerFilter("");
+  };
+
+  const cycleChordBeats = (sectionId: string, lineId: string, idx: number) => {
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          lines: s.lines.map((l) => {
+            if (l.id !== lineId || l.type !== "chord") return l;
+            const next = [...l.chords];
+            const cur = next[idx].beats;
+            const ci = BEAT_COUNT_CYCLE.indexOf(cur);
+            const nextBeats = BEAT_COUNT_CYCLE[(ci + 1) % BEAT_COUNT_CYCLE.length];
+            next[idx] = { ...next[idx], beats: nextBeats };
+            return { ...l, chords: next };
+          }),
+        };
+      })
+    );
   };
 
   const removeChordAtIdx = (sectionId: string, lineId: string, idx: number) => {
@@ -382,7 +420,7 @@ export function StructuredEditor({ content, onChange }: Props) {
     const names = new Set<string>();
     sections.forEach((s) =>
       s.lines.forEach((l) => {
-        if (l.type === "chord") l.chords.forEach((c) => { if (c) names.add(c); });
+        if (l.type === "chord") l.chords.forEach((c) => { if (c.name) names.add(c.name); });
       })
     );
     return Array.from(names);
@@ -483,18 +521,30 @@ export function StructuredEditor({ content, onChange }: Props) {
                     <View key={line.id}>
                       <View style={styles.lineRow}>
                         <View style={styles.chordChips}>
-                          {line.chords.map((chord, idx) => (
-                            <ChordChip
-                              key={`${line.id}-${idx}`}
-                              chord={chord || "?"}
-                              active={
-                                chordPicker?.lineId === line.id &&
-                                chordPicker?.replaceIdx === idx
-                              }
-                              onPress={() => openChordPicker(section.id, line.id, idx)}
-                              onLongPress={() => removeChordAtIdx(section.id, line.id, idx)}
-                              colors={colors}
-                            />
+                          {line.chords.map((entry, idx) => (
+                            <View key={`${line.id}-${idx}`} style={styles.chordChipWrap}>
+                              <ChordChip
+                                chord={entry.name || "?"}
+                                active={
+                                  chordPicker?.lineId === line.id &&
+                                  chordPicker?.replaceIdx === idx
+                                }
+                                onPress={() => openChordPicker(section.id, line.id, idx)}
+                                onLongPress={() => removeChordAtIdx(section.id, line.id, idx)}
+                                colors={colors}
+                              />
+                              <Pressable
+                                onPress={() => cycleChordBeats(section.id, line.id, idx)}
+                                style={[
+                                  styles.beatBadge,
+                                  { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}44` },
+                                ]}
+                              >
+                                <Text style={[styles.beatBadgeText, { color: colors.primary }]}>
+                                  {entry.beats}
+                                </Text>
+                              </Pressable>
+                            </View>
                           ))}
                           <Pressable
                             onPress={() => openChordPicker(section.id, line.id, null)}
@@ -1314,7 +1364,10 @@ const styles = StyleSheet.create({
   lineRow: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 36 },
 
   chordChips: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" },
+  chordChipWrap: { flexDirection: "row", alignItems: "center", gap: 3 },
   chordChip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
+  beatBadge: { borderRadius: 5, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 2 },
+  beatBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold" },
   chordChipActive: { shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4, elevation: 3 },
   chordChipText: { fontSize: 14, fontFamily: "Inter_700Bold" },
   addChordBtn: {
