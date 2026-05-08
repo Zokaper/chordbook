@@ -8,9 +8,11 @@ const MONO_FONT = Platform.select({
 });
 
 import { useColors } from "@/hooks/useColors";
+import { transposeChord } from "@/utils/transposing";
 
 interface ChordViewerProps {
   content: string;
+  capo?: number;
 }
 
 type LineType = "section" | "chord" | "tab" | "strum" | "riff" | "note" | "lyric" | "empty";
@@ -71,7 +73,6 @@ function parseRiffLine(raw: string): RiffString[] {
     const inner = part.replace(/^[a-zA-Z]\|/, "").replace(/\|$/, "");
     return { name, slots: inner };
   });
-  // Pad all strings to same length for aligned display
   const maxLen = Math.max(...strings.map((s) => s.slots.length), 0);
   return strings.map((s) => ({
     ...s,
@@ -106,8 +107,36 @@ function parseChordPro(text: string): ChordProSeg[] {
   return result;
 }
 
+// ─── Chord token with optional capo label ─────────────────────────────────────
+interface ChordTokenProps {
+  chord: string;
+  capo: number;
+  accentColor: string;
+  mutedColor: string;
+  primaryColor: string;
+}
+
+function ChordTokenView({ chord, capo, accentColor, mutedColor, primaryColor }: ChordTokenProps) {
+  const transposed = capo > 0 ? transposeChord(chord, capo) : null;
+  const showLabel = transposed !== null && transposed !== chord;
+  return (
+    <View style={tokenStyles.wrap}>
+      <Text style={[tokenStyles.chord, { color: accentColor }]}>{chord}</Text>
+      {showLabel && (
+        <Text style={[tokenStyles.label, { color: primaryColor }]}>{transposed}</Text>
+      )}
+    </View>
+  );
+}
+
+const tokenStyles = StyleSheet.create({
+  wrap: { alignItems: "center", marginRight: 12 },
+  chord: { fontSize: 15, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5 },
+  label: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 0.3, marginTop: 1, opacity: 0.75 },
+});
+
 // ─── Component ───────────────────────────────────────────────────────────────
-export function ChordViewer({ content }: ChordViewerProps) {
+export function ChordViewer({ content, capo = 0 }: ChordViewerProps) {
   const colors = useColors();
 
   const lines = useMemo<ParsedLine[]>(() => {
@@ -177,38 +206,66 @@ export function ChordViewer({ content }: ChordViewerProps) {
                   { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` },
                 ]}
               >
-                {groups.map((groupBeats, ci) => (
-                  <View key={ci} style={styles.chordGroup}>
-                    <Text style={[styles.chordGroupName, { color: colors.accent }]}>
-                      {chords[ci]}
-                    </Text>
-                    <View style={styles.chordGroupBeats}>
-                      {groupBeats.map((beat, bi) => (
-                        <Text
-                          key={bi}
-                          style={[
-                            styles.chordGroupBeat,
-                            {
-                              color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary,
-                              opacity: beat === "-" ? 0.4 : 1,
-                            },
-                          ]}
-                        >
-                          {BEAT_SYMBOL[beat]}
+                {groups.map((groupBeats, ci) => {
+                  const transposed = capo > 0 ? transposeChord(chords[ci], capo) : null;
+                  const showLabel = transposed !== null && transposed !== chords[ci];
+                  return (
+                    <View key={ci} style={styles.chordGroup}>
+                      <View style={styles.chordGroupNameWrap}>
+                        <Text style={[styles.chordGroupName, { color: colors.accent }]}>
+                          {chords[ci]}
                         </Text>
-                      ))}
+                        {showLabel && (
+                          <Text style={[styles.chordGroupTransposed, { color: colors.primary }]}>
+                            {transposed}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.chordGroupBeats}>
+                        {groupBeats.map((beat, bi) => (
+                          <Text
+                            key={bi}
+                            style={[
+                              styles.chordGroupBeat,
+                              {
+                                color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary,
+                                opacity: beat === "-" ? 0.4 : 1,
+                              },
+                            ]}
+                          >
+                            {BEAT_SYMBOL[beat]}
+                          </Text>
+                        ))}
+                      </View>
+                      {ci < chords.length - 1 && (
+                        <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
+                      )}
                     </View>
-                    {ci < chords.length - 1 && (
-                      <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
-                    )}
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             );
           }
 
           // ── Plain chord line ──────────────────────────────────────────────
           if (item.type === "chord") {
+            const tokens = (item as ParsedLine).text.trim().split(/\s+/).filter(Boolean);
+            if (capo > 0) {
+              return (
+                <View key={idx} style={styles.chordTokenRow}>
+                  {tokens.map((chord, ti) => (
+                    <ChordTokenView
+                      key={ti}
+                      chord={chord}
+                      capo={capo}
+                      accentColor={colors.accent}
+                      mutedColor={colors.mutedForeground}
+                      primaryColor={colors.primary}
+                    />
+                  ))}
+                </View>
+              );
+            }
             return (
               <Text key={idx} style={[styles.chordLine, { color: colors.accent }]}>
                 {(item as ParsedLine).text}
@@ -299,20 +356,31 @@ export function ChordViewer({ content }: ChordViewerProps) {
             const segs = parseChordPro(lyricText);
             return (
               <View key={idx} style={styles.chordProRow}>
-                {segs.map((seg, si) => (
-                  <View key={si} style={styles.chordProSeg}>
-                    <View style={styles.chordProNameBox}>
-                      {seg.chord ? (
-                        <Text style={[styles.chordProName, { color: colors.accent }]}>
-                          {seg.chord}
-                        </Text>
-                      ) : null}
+                {segs.map((seg, si) => {
+                  const transposed = seg.chord && capo > 0 ? transposeChord(seg.chord, capo) : null;
+                  const showLabel = transposed !== null && transposed !== seg.chord;
+                  return (
+                    <View key={si} style={styles.chordProSeg}>
+                      <View style={styles.chordProNameBox}>
+                        {seg.chord ? (
+                          <View style={styles.chordProNameStack}>
+                            <Text style={[styles.chordProName, { color: colors.accent }]}>
+                              {seg.chord}
+                            </Text>
+                            {showLabel && (
+                              <Text style={[styles.chordProTransposed, { color: colors.primary }]}>
+                                {transposed}
+                              </Text>
+                            )}
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={[styles.lyricLine, { color: colors.foreground }]}>
+                        {seg.text || (si === segs.length - 1 ? "" : " ")}
+                      </Text>
                     </View>
-                    <Text style={[styles.lyricLine, { color: colors.foreground }]}>
-                      {seg.text || (si === segs.length - 1 ? "" : " ")}
-                    </Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             );
           }
@@ -344,6 +412,12 @@ const styles = StyleSheet.create({
     fontSize: 15, fontFamily: "Inter_600SemiBold",
     letterSpacing: 0.5, lineHeight: 22,
   },
+  chordTokenRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    marginVertical: 2,
+  },
   tabLine: {
     fontSize: 13, fontFamily: MONO_FONT,
     letterSpacing: 0, lineHeight: 19,
@@ -363,14 +437,23 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   chordProNameBox: {
-    height: 18,
+    minHeight: 18,
     justifyContent: "flex-end",
+  },
+  chordProNameStack: {
+    alignItems: "flex-start",
   },
   chordProName: {
     fontSize: 12,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.3,
     lineHeight: 17,
+  },
+  chordProTransposed: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
+    opacity: 0.75,
   },
 
   // ── Chord + Strum paired block ─────────────────────────────────────────────
@@ -384,7 +467,9 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   chordGroup: { flexDirection: "row", alignItems: "center", gap: 5 },
+  chordGroupNameWrap: { alignItems: "center" },
   chordGroupName: { fontSize: 15, fontFamily: "Inter_700Bold", letterSpacing: 0.3, minWidth: 28 },
+  chordGroupTransposed: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.3, opacity: 0.75 },
   chordGroupBeats: { flexDirection: "row", alignItems: "center", gap: 3 },
   chordGroupBeat: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   chordGroupDiv: { fontSize: 18, fontFamily: "Inter_400Regular", opacity: 0.35, marginHorizontal: 6 },

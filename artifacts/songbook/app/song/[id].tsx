@@ -252,7 +252,7 @@ export default function SongScreen() {
           </View>
         )}
 
-        <ChordViewer content={song.content} />
+        <ChordViewer content={song.content} capo={song.capo ?? 0} />
       </ScrollView>
     </View>
   );

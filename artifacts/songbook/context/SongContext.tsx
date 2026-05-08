@@ -13,6 +13,7 @@ export interface Song {
   title: string;
   artist: string;
   key: string;
+  capo: number;
   tempo: string;
   tags: string[];
   content: string;
@@ -59,6 +60,7 @@ function migrate(raw: unknown): { songs: Song[]; changed: boolean } {
       title: rest.title ?? "",
       artist: rest.artist ?? "",
       key: rest.key ?? "",
+      capo: typeof rest.capo === "number" ? rest.capo : 0,
       tempo: rest.tempo ?? "",
       tags,
       content: rest.content ?? "",

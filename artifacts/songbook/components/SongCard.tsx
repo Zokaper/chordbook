@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import { Song } from "@/context/SongContext";
+import { capoLabel } from "@/utils/transposing";
 import { useColors } from "@/hooks/useColors";
 import { relativeTime } from "@/utils/relativeTime";
 
@@ -75,6 +76,15 @@ export function SongCard({ song, onDelete }: SongCardProps) {
               >
                 <Text style={[styles.keyText, { color: colors.primaryForeground }]}>
                   {song.key}
+                </Text>
+              </View>
+            )}
+            {!!song.capo && (
+              <View
+                style={[styles.tagBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+              >
+                <Text style={[styles.tagText, { color: colors.secondaryForeground }]}>
+                  {capoLabel(song.capo)}
                 </Text>
               </View>
             )}

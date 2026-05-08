@@ -8,7 +8,7 @@ import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
-import { TAB_BAR_BASE_HEIGHT, useBottomPadding, useThemeColorSync } from "@/hooks/useTopPadding";
+import { TAB_BAR_BASE_HEIGHT, useBottomPadding } from "@/hooks/useTopPadding";
 
 function NativeTabLayout() {
   return (
@@ -36,8 +36,6 @@ function ClassicTabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const bottomSafeArea = useBottomPadding();
-
-  useThemeColorSync(colors.background);
 
   return (
     <Tabs

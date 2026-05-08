@@ -40,6 +40,7 @@ export default function EditorScreen() {
   const [songKey, setSongKey] = useState(existingSong?.key ?? "");
   const [tempo, setTempo] = useState(existingSong?.tempo ?? "");
   const [tags, setTags] = useState<string[]>(existingSong?.tags ?? []);
+  const [capo, setCapo] = useState(existingSong?.capo ?? 0);
   const [content, setContent] = useState(existingSong?.content ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -56,6 +57,7 @@ export default function EditorScreen() {
         title: title.trim(),
         artist: artist.trim(),
         key: songKey,
+        capo,
         tempo: tempo.trim(),
         tags,
         content,
@@ -262,6 +264,44 @@ export default function EditorScreen() {
                   ]}
                 >
                   {item}
+                </Text>
+              </Pressable>
+            )}
+          />
+        </View>
+
+        {/* Capo */}
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Capo
+          </Text>
+          <FlatList
+            data={[0, 1, 2, 3, 4, 5, 6, 7]}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(n) => String(n)}
+            contentContainerStyle={styles.chipRow}
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => setCapo(item)}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: capo === item ? colors.primary : colors.secondary,
+                    borderColor: capo === item ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    {
+                      color: capo === item ? colors.primaryForeground : colors.secondaryForeground,
+                      fontFamily: capo === item ? "Inter_700Bold" : "Inter_400Regular",
+                    },
+                  ]}
+                >
+                  {item === 0 ? "None" : String(item)}
                 </Text>
               </Pressable>
             )}
