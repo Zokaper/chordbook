@@ -15,6 +15,8 @@ import {
 import { useChords } from "@/context/ChordContext";
 import {
   useSettings,
+  type CapoLabelDisplay,
+  type CapoLabelLocation,
   type SortBy,
   type ThemePref,
 } from "@/context/SettingsContext";
@@ -34,6 +36,17 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "artist", label: "Artist" },
 ];
 
+const CAPO_DISPLAY_OPTIONS: { value: CapoLabelDisplay; label: string }[] = [
+  { value: "none", label: "Hide" },
+  { value: "real", label: "Pitch only" },
+  { value: "both", label: "Both" },
+];
+
+const CAPO_LOCATION_OPTIONS: { value: CapoLabelLocation; label: string }[] = [
+  { value: "strip", label: "Chord strip" },
+  { value: "everywhere", label: "Everywhere" },
+];
+
 interface BackupData {
   version: number;
   exportedAt: string;
@@ -43,7 +56,7 @@ interface BackupData {
 
 export default function SettingsScreen() {
   const colors = useColors();
-  const { settings, setTheme, setSortBy } = useSettings();
+  const { settings, setTheme, setSortBy, setCapoLabelDisplay, setCapoLabelLocation } = useSettings();
   const { songs, clearAllSongs, importSongs } = useSongs();
   const { chords, importChords } = useChords();
   const [importing, setImporting] = useState(false);
@@ -253,6 +266,86 @@ export default function SettingsScreen() {
                     onPress={() => {
                       Haptics.selectionAsync();
                       setSortBy(opt.value);
+                    }}
+                    style={[
+                      styles.segment,
+                      {
+                        backgroundColor: active ? colors.primary : colors.secondary,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        {
+                          color: active ? colors.primaryForeground : colors.secondaryForeground,
+                          fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
+                        },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Section>
+
+        {/* Capo labels */}
+        <Section label="Capo labels" colors={colors}>
+          <View style={[styles.row, styles.rowColumn]}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+              What to show
+            </Text>
+            <View style={[styles.segmented, { marginTop: 4 }]}>
+              {CAPO_DISPLAY_OPTIONS.map((opt) => {
+                const active = settings.capoLabelDisplay === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setCapoLabelDisplay(opt.value);
+                    }}
+                    style={[
+                      styles.segment,
+                      {
+                        backgroundColor: active ? colors.primary : colors.secondary,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        {
+                          color: active ? colors.primaryForeground : colors.secondaryForeground,
+                          fontFamily: active ? "Inter_600SemiBold" : "Inter_400Regular",
+                        },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <View style={[styles.row, styles.rowColumn]}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+              Where to show
+            </Text>
+            <View style={[styles.segmented, { marginTop: 4 }]}>
+              {CAPO_LOCATION_OPTIONS.map((opt) => {
+                const active = settings.capoLabelLocation === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setCapoLabelLocation(opt.value);
                     }}
                     style={[
                       styles.segment,

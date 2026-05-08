@@ -10,9 +10,12 @@ const MONO_FONT = Platform.select({
 import { useColors } from "@/hooks/useColors";
 import { transposeChord } from "@/utils/transposing";
 
+export type ChordViewerCapoMode = "none" | "real" | "both";
+
 interface ChordViewerProps {
   content: string;
   capo?: number;
+  capoMode?: ChordViewerCapoMode;
 }
 
 type LineType = "section" | "chord" | "tab" | "strum" | "riff" | "note" | "lyric" | "empty";
@@ -111,20 +114,34 @@ function parseChordPro(text: string): ChordProSeg[] {
 interface ChordTokenProps {
   chord: string;
   capo: number;
+  mode: ChordViewerCapoMode;
   accentColor: string;
   mutedColor: string;
   primaryColor: string;
 }
 
-function ChordTokenView({ chord, capo, accentColor, mutedColor, primaryColor }: ChordTokenProps) {
+function ChordTokenView({ chord, capo, mode, accentColor, primaryColor }: ChordTokenProps) {
   const transposed = capo > 0 ? transposeChord(chord, capo) : null;
-  const showLabel = transposed !== null && transposed !== chord;
+  const different = transposed !== null && transposed !== chord;
+
+  if (mode === "none" || !transposed || !different) {
+    return (
+      <View style={tokenStyles.wrap}>
+        <Text style={[tokenStyles.chord, { color: accentColor }]}>{chord}</Text>
+      </View>
+    );
+  }
+  if (mode === "real") {
+    return (
+      <View style={tokenStyles.wrap}>
+        <Text style={[tokenStyles.chord, { color: accentColor }]}>{transposed}</Text>
+      </View>
+    );
+  }
   return (
     <View style={tokenStyles.wrap}>
       <Text style={[tokenStyles.chord, { color: accentColor }]}>{chord}</Text>
-      {showLabel && (
-        <Text style={[tokenStyles.label, { color: primaryColor }]}>{transposed}</Text>
-      )}
+      <Text style={[tokenStyles.label, { color: primaryColor }]}>{transposed}</Text>
     </View>
   );
 }
@@ -136,7 +153,7 @@ const tokenStyles = StyleSheet.create({
 });
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export function ChordViewer({ content, capo = 0 }: ChordViewerProps) {
+export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewerProps) {
   const colors = useColors();
 
   const lines = useMemo<ParsedLine[]>(() => {
@@ -212,10 +229,17 @@ export function ChordViewer({ content, capo = 0 }: ChordViewerProps) {
                   return (
                     <View key={ci} style={styles.chordGroup}>
                       <View style={styles.chordGroupNameWrap}>
-                        <Text style={[styles.chordGroupName, { color: colors.accent }]}>
-                          {chords[ci]}
-                        </Text>
-                        {showLabel && (
+                        {capoMode !== "real" && (
+                          <Text style={[styles.chordGroupName, { color: colors.accent }]}>
+                            {chords[ci]}
+                          </Text>
+                        )}
+                        {capoMode === "real" && (
+                          <Text style={[styles.chordGroupName, { color: colors.accent }]}>
+                            {showLabel ? transposed : chords[ci]}
+                          </Text>
+                        )}
+                        {capoMode === "both" && showLabel && (
                           <Text style={[styles.chordGroupTransposed, { color: colors.primary }]}>
                             {transposed}
                           </Text>
@@ -250,7 +274,7 @@ export function ChordViewer({ content, capo = 0 }: ChordViewerProps) {
           // ── Plain chord line ──────────────────────────────────────────────
           if (item.type === "chord") {
             const tokens = (item as ParsedLine).text.trim().split(/\s+/).filter(Boolean);
-            if (capo > 0) {
+            if (capo > 0 && capoMode !== "none") {
               return (
                 <View key={idx} style={styles.chordTokenRow}>
                   {tokens.map((chord, ti) => (
@@ -258,6 +282,7 @@ export function ChordViewer({ content, capo = 0 }: ChordViewerProps) {
                       key={ti}
                       chord={chord}
                       capo={capo}
+                      mode={capoMode}
                       accentColor={colors.accent}
                       mutedColor={colors.mutedForeground}
                       primaryColor={colors.primary}
@@ -364,10 +389,17 @@ export function ChordViewer({ content, capo = 0 }: ChordViewerProps) {
                       <View style={styles.chordProNameBox}>
                         {seg.chord ? (
                           <View style={styles.chordProNameStack}>
-                            <Text style={[styles.chordProName, { color: colors.accent }]}>
-                              {seg.chord}
-                            </Text>
-                            {showLabel && (
+                            {capoMode !== "real" && (
+                              <Text style={[styles.chordProName, { color: colors.accent }]}>
+                                {seg.chord}
+                              </Text>
+                            )}
+                            {capoMode === "real" && (
+                              <Text style={[styles.chordProName, { color: colors.accent }]}>
+                                {showLabel ? transposed : seg.chord}
+                              </Text>
+                            )}
+                            {capoMode === "both" && showLabel && (
                               <Text style={[styles.chordProTransposed, { color: colors.primary }]}>
                                 {transposed}
                               </Text>

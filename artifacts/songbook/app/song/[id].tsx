@@ -16,9 +16,11 @@ import {
 import { ChordDiagram } from "@/components/ChordDiagram";
 import { ChordViewer } from "@/components/ChordViewer";
 import { ChordFingering, useChords } from "@/context/ChordContext";
+import { useSettings } from "@/context/SettingsContext";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
 import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
+import { transposeChord } from "@/utils/transposing";
 
 const CHORD_TOKEN_RE =
   /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
@@ -60,6 +62,7 @@ export default function SongScreen() {
   const colors = useColors();
   const { getSong, deleteSong, updateSong } = useSongs();
   const { chords: chordLibrary } = useChords();
+  const { settings } = useSettings();
 
   const song = getSong(id ?? "");
 
@@ -213,6 +216,13 @@ export default function SongScreen() {
                 const variantIdx = variants.findIndex((v) => v.id === chord.id);
                 const hasMultiple = variants.length > 1;
 
+                const capoValue = song.capo ?? 0;
+                const display = settings.capoLabelDisplay;
+                const transposed = capoValue > 0 && display !== "none"
+                  ? transposeChord(name, capoValue)
+                  : null;
+                const showTransposed = transposed !== null && transposed !== name;
+
                 return (
                   <Pressable
                     key={name}
@@ -232,11 +242,16 @@ export default function SongScreen() {
                     <ChordDiagram
                       chord={chord}
                       width={76}
-                      showLabel
+                      showLabel={display !== "real"}
                       primaryColor={colors.primary}
                       textColor={colors.foreground}
                       gridColor={colors.border}
                     />
+                    {showTransposed && (
+                      <Text style={[styles.stripTransposed, { color: colors.primary }]}>
+                        {transposed}
+                      </Text>
+                    )}
                     {hasMultiple && (
                       <View style={styles.variantBadge}>
                         <Feather name="refresh-cw" size={9} color={colors.primary} />
@@ -252,7 +267,11 @@ export default function SongScreen() {
           </View>
         )}
 
-        <ChordViewer content={song.content} capo={song.capo ?? 0} />
+        <ChordViewer
+          content={song.content}
+          capo={settings.capoLabelLocation === "everywhere" ? (song.capo ?? 0) : 0}
+          capoMode={settings.capoLabelDisplay}
+        />
       </ScrollView>
     </View>
   );
@@ -299,6 +318,7 @@ const styles = StyleSheet.create({
   },
   chordStripRow: { paddingHorizontal: 12, gap: 8, flexDirection: "row", alignItems: "flex-start" },
   chordStripItem: { alignItems: "center", gap: 4 },
+  stripTransposed: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 0.3 },
   variantBadge: { flexDirection: "row", alignItems: "center", gap: 3 },
   variantText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
 });

@@ -9,21 +9,29 @@ import React, {
 
 export type ThemePref = "system" | "light" | "dark";
 export type SortBy = "recent" | "title" | "artist";
+export type CapoLabelDisplay = "none" | "real" | "both";
+export type CapoLabelLocation = "strip" | "everywhere";
 
 export interface Settings {
   theme: ThemePref;
   sortBy: SortBy;
+  capoLabelDisplay: CapoLabelDisplay;
+  capoLabelLocation: CapoLabelLocation;
 }
 
 interface SettingsContextValue {
   settings: Settings;
   setTheme: (theme: ThemePref) => Promise<void>;
   setSortBy: (sort: SortBy) => Promise<void>;
+  setCapoLabelDisplay: (v: CapoLabelDisplay) => Promise<void>;
+  setCapoLabelLocation: (v: CapoLabelLocation) => Promise<void>;
 }
 
 const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   sortBy: "recent",
+  capoLabelDisplay: "both",
+  capoLabelLocation: "strip",
 };
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -70,8 +78,22 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     [settings]
   );
 
+  const setCapoLabelDisplay = useCallback(
+    async (capoLabelDisplay: CapoLabelDisplay) => {
+      await persist({ ...settings, capoLabelDisplay });
+    },
+    [settings]
+  );
+
+  const setCapoLabelLocation = useCallback(
+    async (capoLabelLocation: CapoLabelLocation) => {
+      await persist({ ...settings, capoLabelLocation });
+    },
+    [settings]
+  );
+
   return (
-    <SettingsContext.Provider value={{ settings, setTheme, setSortBy }}>
+    <SettingsContext.Provider value={{ settings, setTheme, setSortBy, setCapoLabelDisplay, setCapoLabelLocation }}>
       {children}
     </SettingsContext.Provider>
   );
@@ -84,6 +106,8 @@ export function useSettings(): SettingsContextValue {
       settings: DEFAULT_SETTINGS,
       setTheme: async () => {},
       setSortBy: async () => {},
+      setCapoLabelDisplay: async () => {},
+      setCapoLabelLocation: async () => {},
     };
   }
   return ctx;
