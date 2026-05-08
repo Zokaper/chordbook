@@ -1,8 +1,8 @@
-const CACHE_NAME = 'chordbook-v1778250521074';
+const CACHE_NAME = 'chordbook-v1778251229200';
 const CACHED_URLS = [
   "/chordbook/",
   "/chordbook/_expo/static/css/native-tabs.module-1c34c93ae030da6223919552702a4e39.css",
-  "/chordbook/_expo/static/js/web/entry-698bae3c5752b8c52537dd2163488e38.js",
+  "/chordbook/_expo/static/js/web/entry-99d1608f426055b237e07f4eb82b4a8d.js",
   "/chordbook/assets/icon.png",
   "/chordbook/assets/vendor/AntDesign.3f78af31cca60105799838a1a7a59fbd.ttf",
   "/chordbook/assets/vendor/Entypo.31b5ffea3daddc69dd01a1f3d6cf63c5.ttf",
