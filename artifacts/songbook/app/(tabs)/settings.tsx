@@ -20,7 +20,7 @@ import {
 } from "@/context/SettingsContext";
 import { useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
-import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
+import { useTopPadding, useTabScreenBottomPadding } from "@/hooks/useTopPadding";
 
 const THEME_OPTIONS: { value: ThemePref; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { value: "system", label: "System", icon: "smartphone" },
@@ -49,7 +49,7 @@ export default function SettingsScreen() {
   const [importing, setImporting] = useState(false);
 
   const topPadding = useTopPadding();
-  const bottomPadding = useBottomPadding(60);
+  const bottomPadding = useTabScreenBottomPadding(24);
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const handleExport = () => {

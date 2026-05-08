@@ -8,6 +8,7 @@ import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+import { TAB_BAR_BASE_HEIGHT, useBottomPadding, useThemeColorSync } from "@/hooks/useTopPadding";
 
 function NativeTabLayout() {
   return (
@@ -34,6 +35,9 @@ function ClassicTabLayout() {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+  const bottomSafeArea = useBottomPadding();
+
+  useThemeColorSync(colors.background);
 
   return (
     <Tabs
@@ -47,7 +51,7 @@ function ClassicTabLayout() {
           borderTopWidth: isWeb ? 1 : 0,
           borderTopColor: colors.border,
           elevation: 0,
-          ...(isWeb ? { height: 84 } : {}),
+          ...(isWeb ? { height: TAB_BAR_BASE_HEIGHT + bottomSafeArea } : {}),
         },
         tabBarBackground: () =>
           isIOS ? (

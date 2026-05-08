@@ -21,7 +21,7 @@ import { useChords } from "@/context/ChordContext";
 import { useSettings, type SortBy } from "@/context/SettingsContext";
 import { Song, useSongs } from "@/context/SongContext";
 import { useColors } from "@/hooks/useColors";
-import { useTopPadding, useBottomPadding } from "@/hooks/useTopPadding";
+import { useTopPadding, useTabScreenBottomPadding } from "@/hooks/useTopPadding";
 
 const CHORD_TOKEN_RE =
   /^[A-G][#b]?(m|maj|maj7|M7|min|dim|aug|sus2|sus4|sus|add9|add11|7|9|11|13|6|5|m7|m9|mM7)?(\/[A-G][#b]?)?$/;
@@ -57,7 +57,7 @@ export default function LibraryScreen() {
   const [showFilters, setShowFilters] = useState(false);
 
   const topPadding = useTopPadding();
-  const bottomPadding = useBottomPadding();
+  const bottomPadding = useTabScreenBottomPadding();
 
   // All unique keys across songs
   const allKeys = useMemo(
