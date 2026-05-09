@@ -100,10 +100,12 @@ const SEED_CONTENT = [
   "NOTE:Capo optional. Waltz feel — emphasise beat 1.",
 ].join("\n");
 
-function makeSeedSong(): Song {
+export const EXAMPLE_SONG_ID = "seed_let_the_light_in";
+
+export function makeExampleSong(): Song {
   const now = new Date().toISOString();
   return {
-    id: "seed_let_the_light_in",
+    id: EXAMPLE_SONG_ID,
     title: "Let the Light In",
     artist: "Lana Del Rey",
     key: "A",
@@ -116,6 +118,9 @@ function makeSeedSong(): Song {
     updatedAt: now,
   };
 }
+
+// keep old name for internal use
+const makeSeedSong = makeExampleSong;
 
 export function SongProvider({ children }: { children: React.ReactNode }) {
   const [songs, setSongs] = useState<Song[]>([]);
