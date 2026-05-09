@@ -1388,7 +1388,6 @@ function RiffEditorGrid({
                                 : hasValue
                                 ? colors.primary
                                 : `${colors.border}cc`,
-                              fontStyle: isArt && !isSelected ? "italic" : "normal",
                             },
                           ]}
                         >
@@ -1432,7 +1431,7 @@ function RiffEditorGrid({
                 },
               ]}
             >
-              <Text style={[riffStyles.fretBtnText, { color: colors.accent, fontStyle: "italic" }]}>{a}</Text>
+              <Text style={[riffStyles.fretBtnText, { color: colors.accent }]}>{a}</Text>
             </Pressable>
           ))}
           <Pressable
