@@ -168,7 +168,7 @@ export function parseContent(raw: string): Section[] {
       }
       const repeatStr = rest.find((p) => p.startsWith("REPEAT:"));
       const repeat = repeatStr ? Math.max(1, parseInt(repeatStr.slice(7), 10)) : 1;
-      current.lines.push({ id: genId(), type: "strum", beats: beats.slice(0, 8), repeat });
+      current.lines.push({ id: genId(), type: "strum", beats, repeat });
     } else if (line.startsWith("CHORD:")) {
       current.lines.push({
         id: genId(),
@@ -454,6 +454,35 @@ export function StructuredEditor({ content, onChange }: Props) {
     setPickerFilter("");
   };
 
+  const addStrumBeat = (sectionId: string, lineId: string) =>
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          lines: s.lines.map((l) => {
+            if (l.id !== lineId || l.type !== "strum") return l;
+            return { ...l, beats: [...l.beats, "-"] };
+          }),
+        };
+      })
+    );
+
+  const removeStrumBeat = (sectionId: string, lineId: string) =>
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          lines: s.lines.map((l) => {
+            if (l.id !== lineId || l.type !== "strum") return l;
+            if (l.beats.length <= 1) return l;
+            return { ...l, beats: l.beats.slice(0, -1) };
+          }),
+        };
+      })
+    );
+
   const cycleRepeat = (sectionId: string, lineId: string) => {
     setSections((prev) =>
       prev.map((s) => {
@@ -658,8 +687,8 @@ export function StructuredEditor({ content, onChange }: Props) {
                       </View>
                       {activeMenu === line.id && (
                         <LineActionBar
-                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
-                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); }}
                           onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
                           onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
@@ -731,8 +760,8 @@ export function StructuredEditor({ content, onChange }: Props) {
                       </View>
                       {activeMenu === line.id && (
                         <LineActionBar
-                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
-                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); }}
                           onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
                           onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
@@ -754,10 +783,16 @@ export function StructuredEditor({ content, onChange }: Props) {
                   return (
                     <View key={line.id}>
                       <View style={styles.lineRow}>
-                        <View style={styles.strumRow}>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          keyboardShouldPersistTaps="always"
+                          style={{ flex: 1 }}
+                          contentContainerStyle={styles.strumScrollContent}
+                        >
                           {line.beats.map((beat, bi) => (
                             <React.Fragment key={bi}>
-                              {bi === 4 && (
+                              {bi > 0 && bi % 4 === 0 && (
                                 <View style={[styles.strumBarDiv, { backgroundColor: colors.border }]} />
                               )}
                               <Pressable
@@ -797,7 +832,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                               </Pressable>
                             </React.Fragment>
                           ))}
-                        </View>
+                        </ScrollView>
                         <Pressable
                           onPress={() => cycleRepeat(section.id, line.id)}
                           style={[styles.repeatBadge, { borderColor: line.repeat > 1 ? colors.primary : colors.border }]}
@@ -814,10 +849,30 @@ export function StructuredEditor({ content, onChange }: Props) {
                           <Feather name="more-vertical" size={16} color={colors.mutedForeground} />
                         </Pressable>
                       </View>
+                      <View style={styles.strumBeatControls}>
+                        <Pressable
+                          onPress={() => removeStrumBeat(section.id, line.id)}
+                          disabled={line.beats.length <= 1}
+                          style={({ pressed }) => [styles.strumBeatBtn, { borderColor: colors.border, opacity: line.beats.length <= 1 ? 0.3 : pressed ? 0.5 : 0.8 }]}
+                        >
+                          <Feather name="minus" size={11} color={colors.mutedForeground} />
+                          <Text style={[styles.strumBeatBtnText, { color: colors.mutedForeground }]}>beat</Text>
+                        </Pressable>
+                        <Text style={[styles.strumBeatCount, { color: colors.mutedForeground }]}>
+                          {line.beats.length} beats
+                        </Text>
+                        <Pressable
+                          onPress={() => addStrumBeat(section.id, line.id)}
+                          style={({ pressed }) => [styles.strumBeatBtn, { borderColor: colors.border, opacity: pressed ? 0.5 : 0.8 }]}
+                        >
+                          <Feather name="plus" size={11} color={colors.mutedForeground} />
+                          <Text style={[styles.strumBeatBtnText, { color: colors.mutedForeground }]}>beat</Text>
+                        </Pressable>
+                      </View>
                       {activeMenu === line.id && (
                         <LineActionBar
-                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
-                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); }}
                           onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
                           onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
@@ -852,8 +907,8 @@ export function StructuredEditor({ content, onChange }: Props) {
                       </View>
                       {activeMenu === line.id && (
                         <LineActionBar
-                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
-                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); }}
                           onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
                           onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
@@ -888,8 +943,8 @@ export function StructuredEditor({ content, onChange }: Props) {
                       </View>
                       {activeMenu === line.id && (
                         <LineActionBar
-                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
-                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); }}
                           onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
                           onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
@@ -1644,7 +1699,18 @@ const styles = StyleSheet.create({
   lyricInput: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", paddingVertical: 6, lineHeight: 20 },
 
   strumRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 4 },
+  strumScrollContent: { flexDirection: "row", alignItems: "center", gap: 4 },
   strumBarDiv: { width: 1.5, height: 28, borderRadius: 1, marginHorizontal: 2 },
+  strumBeatControls: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingLeft: 2, paddingTop: 2, paddingBottom: 2,
+  },
+  strumBeatBtn: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  strumBeatBtnText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  strumBeatCount: { fontSize: 11, fontFamily: "Inter_400Regular", opacity: 0.6 },
   strumBeat: {
     width: 30, height: 34, borderRadius: 8, borderWidth: 1,
     alignItems: "center", justifyContent: "center",
