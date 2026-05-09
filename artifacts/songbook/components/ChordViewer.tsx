@@ -372,7 +372,6 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             const strings = parseRiffLine((item as ParsedLine).text.trim());
             const used = strings.filter((s) => /[^-]/.test(s.slots));
             const rows = used.length > 0 ? used : strings;
-            const hasArts = rows.some((s) => s.arts.some((a) => a !== null));
             return (
               <View
                 key={idx}
@@ -383,31 +382,20 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
               >
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View>
-                    {rows.map((s, si) => (
-                      <View key={si} style={styles.riffRow}>
-                        <Text style={[styles.riffStrName, { color: `${colors.primary}88` }]}>{s.name}</Text>
-                        {hasArts ? (
-                          <View style={styles.riffInlineRow}>
-                            <Text style={[styles.riffContent, { color: `${colors.primary}66` }]}>|</Text>
-                            {[...s.slots].map((ch, ci) => (
-                              <React.Fragment key={ci}>
-                                <Text style={[styles.riffContent, {
-                                  color: ch === "-" ? `${colors.primary}44` : colors.primary,
-                                }]}>{ch}</Text>
-                                {s.arts[ci] ? (
-                                  <Text style={[styles.riffArtChar, { color: colors.accent }]}>{s.arts[ci]}</Text>
-                                ) : (
-                                  <Text style={[styles.riffArtChar, { color: "transparent" }]}>{" "}</Text>
-                                )}
-                              </React.Fragment>
-                            ))}
-                            <Text style={[styles.riffContent, { color: `${colors.primary}66` }]}>|</Text>
-                          </View>
-                        ) : (
-                          <Text style={[styles.riffContent, { color: colors.primary }]}>{`|${s.slots}|`}</Text>
-                        )}
-                      </View>
-                    ))}
+                    {rows.map((s, si) => {
+                      let rowStr = "|";
+                      for (let ci = 0; ci < s.slots.length; ci++) {
+                        rowStr += s.slots[ci];
+                        if (s.arts[ci]) rowStr += s.arts[ci];
+                      }
+                      rowStr += "|";
+                      return (
+                        <View key={si} style={styles.riffRow}>
+                          <Text style={[styles.riffStrName, { color: `${colors.primary}88` }]}>{s.name}</Text>
+                          <Text style={[styles.riffContent, { color: colors.primary }]}>{rowStr}</Text>
+                        </View>
+                      );
+                    })}
                   </View>
                 </ScrollView>
               </View>
