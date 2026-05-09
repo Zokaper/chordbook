@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,7 @@ import {
 } from "react-native";
 
 
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { ChordDiagram } from "@/components/ChordDiagram";
 import { ChordViewer } from "@/components/ChordViewer";
 import { ChordFingering, useChords } from "@/context/ChordContext";
@@ -46,21 +48,60 @@ function extractChordGroups(
   for (const line of content.split("\n")) {
     if (line.startsWith("[")) continue;
 
-    // New explicit CHORD: prefix format
     if (line.startsWith("CHORD:")) {
       line.slice(6).trim().split(/\s+/).filter(Boolean).forEach(addToken);
       continue;
     }
 
-    // ChordPro [Am]word notation in lyric lines
     const chordProMatches = [...line.matchAll(/\[([A-G][#b]?[^\]]*)\]/g)].map((m) => m[1]);
-    // Legacy: plain chord line detected by regex
     const lineTokens = line.trim().split(/\s+/).filter(Boolean);
     const isLegacyChordLine = lineTokens.length > 0 && lineTokens.every((t) => CHORD_TOKEN_RE.test(t));
     const tokens = isLegacyChordLine ? lineTokens : chordProMatches;
     tokens.forEach(addToken);
   }
   return result;
+}
+
+function exportSongAsText(song: {
+  title: string;
+  artist: string;
+  key?: string;
+  tempo?: string;
+  tags: string[];
+  content: string;
+}): string {
+  const lines: string[] = [];
+  lines.push(song.title.toUpperCase());
+  const meta: string[] = [];
+  if (song.artist) meta.push(song.artist);
+  if (song.key) meta.push(`Key: ${song.key}`);
+  if (song.tempo) meta.push(`${song.tempo} BPM`);
+  if (meta.length) lines.push(meta.join(" · "));
+  if (song.tags.length) lines.push(`Tags: ${song.tags.join(", ")}`);
+  lines.push("");
+  lines.push(song.content);
+  return lines.join("\n");
+}
+
+function downloadSong(song: {
+  title: string;
+  artist: string;
+  key?: string;
+  tempo?: string;
+  tags: string[];
+  content: string;
+}) {
+  const text = exportSongAsText(song);
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const filename = `${song.title.toLowerCase().replace(/\s+/g, "-")}.txt`;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export default function SongScreen() {
@@ -75,10 +116,9 @@ export default function SongScreen() {
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>(
     song?.chordVariants ?? {}
   );
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [chordsPinned, setChordsPinned] = useState(false);
   const [warnTooltip, setWarnTooltip] = useState<string | null>(null);
-  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const topPadding = useTopPadding();
   const bottomPadding = useBottomPadding();
@@ -113,17 +153,10 @@ export default function SongScreen() {
     router.push(`/editor?id=${song.id}`);
   };
 
-  const handleDelete = async () => {
-    if (!deleteConfirm) {
-      setDeleteConfirm(true);
-      deleteTimerRef.current = setTimeout(() => setDeleteConfirm(false), 3000);
-      return;
-    }
-    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
-    setDeleteConfirm(false);
-    await deleteSong(song.id);
+  const handleExport = () => {
+    if (Platform.OS !== "web") return;
+    downloadSong(song);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.replace("/");
   };
 
   const capoValue = song.capo ?? 0;
@@ -255,23 +288,28 @@ export default function SongScreen() {
             <Feather name="arrow-left" size={20} color={colors.foreground} />
           </Pressable>
           <View style={styles.headerActions}>
+            {Platform.OS === "web" && (
+              <Pressable
+                onPress={handleExport}
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  { backgroundColor: colors.secondary, opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Feather name="download" size={18} color={colors.foreground} />
+              </Pressable>
+            )}
             <Pressable
-              onPress={handleDelete}
+              onPress={() => setShowDeleteConfirm(true)}
               style={({ pressed }) => [
                 styles.iconButton,
                 {
-                  backgroundColor: deleteConfirm ? `${colors.destructive}18` : colors.secondary,
-                  borderWidth: deleteConfirm ? 1.5 : 0,
-                  borderColor: deleteConfirm ? colors.destructive : "transparent",
+                  backgroundColor: colors.secondary,
                   opacity: pressed ? 0.7 : 1,
                 },
               ]}
             >
-              <Feather
-                name={deleteConfirm ? "check" : "trash-2"}
-                size={18}
-                color={colors.destructive}
-              />
+              <Feather name="trash-2" size={18} color={colors.destructive} />
             </Pressable>
             <Pressable
               onPress={handleEdit}
@@ -327,6 +365,21 @@ export default function SongScreen() {
           capoMode={settings.capoLabelDisplay}
         />
       </ScrollView>
+
+      <ConfirmModal
+        visible={showDeleteConfirm}
+        title="Delete Song"
+        message="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          setShowDeleteConfirm(false);
+          await deleteSong(song.id);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          router.replace("/");
+        }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </View>
   );
 }

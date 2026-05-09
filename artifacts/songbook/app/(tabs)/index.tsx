@@ -4,7 +4,6 @@ import { router } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   ActionSheetIOS,
-  Alert,
   FlatList,
   Platform,
   Pressable,
@@ -16,6 +15,8 @@ import {
 } from "react-native";
 
 
+import { ActionSheetModal } from "@/components/ActionSheetModal";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { SongCard } from "@/components/SongCard";
 import { useChords } from "@/context/ChordContext";
 import { useSettings, type SortBy } from "@/context/SettingsContext";
@@ -61,6 +62,8 @@ export default function LibraryScreen() {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [activeChords, setActiveChords] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showSortSheet, setShowSortSheet] = useState(false);
 
   const topPadding = useTopPadding();
   const bottomPadding = useTabScreenBottomPadding();
@@ -134,17 +137,7 @@ export default function LibraryScreen() {
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert("Delete Song", "Are you sure you want to delete this song?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await deleteSong(id);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        },
-      },
-    ]);
+    setDeletingId(id);
   };
 
   const handleCreate = () => {
@@ -166,13 +159,7 @@ export default function LibraryScreen() {
         }
       );
     } else {
-      Alert.alert("Sort songs", undefined, [
-        ...order.map((o) => ({
-          text: `Sort by ${SORT_LABELS[o]}`,
-          onPress: () => setSortBy(o),
-        })),
-        { text: "Cancel", style: "cancel" as const },
-      ]);
+      setShowSortSheet(true);
     }
   };
 
@@ -431,6 +418,32 @@ export default function LibraryScreen() {
             )}
           </View>
         }
+      />
+
+      <ConfirmModal
+        visible={deletingId !== null}
+        title="Delete Song"
+        message="Are you sure you want to delete this song? This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          if (deletingId) {
+            await deleteSong(deletingId);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          setDeletingId(null);
+        }}
+        onCancel={() => setDeletingId(null)}
+      />
+
+      <ActionSheetModal
+        visible={showSortSheet}
+        title="Sort songs"
+        options={["recent", "title", "artist"].map((o) => ({
+          label: `Sort by ${SORT_LABELS[o as SortBy]}`,
+          onPress: () => setSortBy(o as SortBy),
+        }))}
+        onDismiss={() => setShowSortSheet(false)}
       />
     </View>
   );

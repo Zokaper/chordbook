@@ -36,6 +36,7 @@ interface ChordContextValue {
   getChord: (id: string) => ChordFingering | undefined;
   getChordsByName: (name: string) => ChordFingering[];
   importChords: (raw: unknown[]) => Promise<void>;
+  clearAllChords: () => Promise<void>;
 }
 
 const ChordContext = createContext<ChordContextValue | null>(null);
@@ -96,7 +97,6 @@ export function ChordProvider({ children }: { children: React.ReactNode }) {
       if (raw) {
         setChords(JSON.parse(raw));
       } else {
-        // First run — seed the example chords
         const seed = makeSeedChords();
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
         setChords(seed);
@@ -174,9 +174,13 @@ export function ChordProvider({ children }: { children: React.ReactNode }) {
     await saveChords(normalized);
   }, []);
 
+  const clearAllChords = useCallback(async () => {
+    await saveChords([]);
+  }, []);
+
   return (
     <ChordContext.Provider
-      value={{ chords, loading, createChord, updateChord, deleteChord, getChord, getChordsByName, importChords }}
+      value={{ chords, loading, createChord, updateChord, deleteChord, getChord, getChordsByName, importChords, clearAllChords }}
     >
       {children}
     </ChordContext.Provider>

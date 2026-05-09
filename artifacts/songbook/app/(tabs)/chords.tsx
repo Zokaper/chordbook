@@ -3,9 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +12,7 @@ import {
 } from "react-native";
 
 
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { ChordCard } from "@/components/ChordCard";
 import { ChordFingering, useChords } from "@/context/ChordContext";
 import { useSongs } from "@/context/SongContext";
@@ -46,11 +45,11 @@ export default function ChordsScreen() {
   const { chords, deleteChord } = useChords();
   const { songs } = useSongs();
   const [search, setSearch] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<ChordGroup | null>(null);
 
   const topPadding = useTopPadding();
   const bottomPadding = useTabScreenBottomPadding();
 
-  // Count how many songs use each chord name
   const songCountByName = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const song of songs) {
@@ -62,7 +61,6 @@ export default function ChordsScreen() {
     return counts;
   }, [songs]);
 
-  // Group chords by name (one card per unique name)
   const groups: ChordGroup[] = useMemo(() => {
     const filtered = chords.filter(
       (c: ChordFingering) => !search || c.name.toLowerCase().includes(search.toLowerCase())
@@ -77,20 +75,14 @@ export default function ChordsScreen() {
   }, [chords, search]);
 
   const handleDeleteGroup = (group: ChordGroup) => {
-    const label = group.chords.length > 1
-      ? `Delete "${group.name}" and all ${group.chords.length} variations?`
-      : `Remove "${group.name}" from your library?`;
-    Alert.alert("Delete Chord", label, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          for (const c of group.chords) await deleteChord(c.id);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        },
-      },
-    ]);
+    setPendingDelete(group);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    for (const c of pendingDelete.chords) await deleteChord(c.id);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setPendingDelete(null);
   };
 
   const handleCreate = () => {
@@ -189,6 +181,22 @@ export default function ChordsScreen() {
             )}
           </View>
         }
+      />
+
+      <ConfirmModal
+        visible={pendingDelete !== null}
+        title="Delete Chord"
+        message={
+          pendingDelete
+            ? pendingDelete.chords.length > 1
+              ? `Delete "${pendingDelete.name}" and all ${pendingDelete.chords.length} variations?`
+              : `Remove "${pendingDelete.name}" from your library?`
+            : ""
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
       />
     </View>
   );

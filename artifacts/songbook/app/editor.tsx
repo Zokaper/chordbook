@@ -3,7 +3,6 @@ import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,7 @@ import {
 } from "react-native";
 
 
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { StructuredEditor } from "@/components/StructuredEditor";
 import { TagsField } from "@/components/TagsField";
 import { useSongs } from "@/context/SongContext";
@@ -43,6 +43,7 @@ export default function EditorScreen() {
   const [capo, setCapo] = useState(existingSong?.capo ?? 0);
   const [content, setContent] = useState(existingSong?.content ?? "");
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const topPadding = useTopPadding();
   const bottomPadding = useBottomPadding(60);
@@ -80,18 +81,7 @@ export default function EditorScreen() {
 
   const handleDelete = () => {
     if (!id) return;
-    Alert.alert("Delete Song", "This cannot be undone.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await deleteSong(id);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          router.dismissAll();
-        },
-      },
-    ]);
+    setShowDeleteConfirm(true);
   };
 
   return (
@@ -352,6 +342,23 @@ export default function EditorScreen() {
         {/* Structured song editor */}
         <StructuredEditor content={content} onChange={setContent} />
       </ScrollView>
+
+      <ConfirmModal
+        visible={showDeleteConfirm}
+        title="Delete Song"
+        message="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          setShowDeleteConfirm(false);
+          if (id) {
+            await deleteSong(id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            router.dismissAll();
+          }
+        }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
