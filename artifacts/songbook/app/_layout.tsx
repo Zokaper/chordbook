@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ChordProvider } from "@/context/ChordContext";
+import { OnboardingProvider } from "@/context/OnboardingContext";
 import { SettingsProvider } from "@/context/SettingsContext";
 import { SongProvider } from "@/context/SongContext";
 
@@ -66,11 +67,13 @@ export default function RootLayout() {
         <SettingsProvider>
           <ChordProvider>
             <SongProvider>
-              <GestureHandlerRootView>
-                <KeyboardProvider>
-                  <RootLayoutNav />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
+              <OnboardingProvider>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <KeyboardProvider>
+                    <RootLayoutNav />
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </OnboardingProvider>
             </SongProvider>
           </ChordProvider>
         </SettingsProvider>

@@ -42,6 +42,46 @@ const ChordContext = createContext<ChordContextValue | null>(null);
 
 const STORAGE_KEY = "songbook_chords_v1";
 
+// ── Seed chords (A, E, D, F#m — key of A) ────────────────────────────────────
+function makeSeedChords(): ChordFingering[] {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: "seed_chord_A",
+      name: "A",
+      strings: [-1, 0, 2, 2, 2, 0], // x02220
+      baseFret: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "seed_chord_E",
+      name: "E",
+      strings: [0, 2, 2, 1, 0, 0], // 022100
+      baseFret: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "seed_chord_D",
+      name: "D",
+      strings: [-1, -1, 0, 2, 3, 2], // xx0232
+      baseFret: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "seed_chord_Fshm",
+      name: "F#m",
+      strings: [2, 4, 4, 2, 2, 2], // 244222 — Em shape barre fret 2
+      baseFret: 2,
+      barre: { fret: 2, from: 0, to: 5 },
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+}
+
 export function ChordProvider({ children }: { children: React.ReactNode }) {
   const [chords, setChords] = useState<ChordFingering[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +93,14 @@ export function ChordProvider({ children }: { children: React.ReactNode }) {
   const loadChords = async () => {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (raw) setChords(JSON.parse(raw));
+      if (raw) {
+        setChords(JSON.parse(raw));
+      } else {
+        // First run — seed the example chords
+        const seed = makeSeedChords();
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+        setChords(seed);
+      }
     } catch (e) {
       console.error("Failed to load chords", e);
     } finally {

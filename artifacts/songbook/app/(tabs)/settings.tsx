@@ -13,6 +13,7 @@ import {
 
 
 import { useChords } from "@/context/ChordContext";
+import { useOnboarding } from "@/context/OnboardingContext";
 import {
   useSettings,
   type CapoLabelDisplay,
@@ -59,6 +60,7 @@ export default function SettingsScreen() {
   const { settings, setTheme, setSortBy, setCapoLabelDisplay, setCapoLabelLocation } = useSettings();
   const { songs, clearAllSongs, importSongs } = useSongs();
   const { chords, importChords } = useChords();
+  const { showOnboarding } = useOnboarding();
   const [importing, setImporting] = useState(false);
 
   const topPadding = useTopPadding();
@@ -429,6 +431,26 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
+        {/* Getting started */}
+        <Section label="Getting started" colors={colors}>
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              showOnboarding();
+            }}
+            style={({ pressed }) => [
+              styles.replayRow,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <View style={styles.statLeft}>
+              <Feather name="play-circle" size={15} color={colors.primary} />
+              <Text style={[styles.rowLabel, { color: colors.foreground }]}>Replay intro</Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+          </Pressable>
+        </Section>
+
         {/* Danger zone */}
         <Section label="Danger zone" colors={colors}>
           <Pressable
@@ -545,6 +567,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   segmentText: { fontSize: 12 },
+  replayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
   statRow: {
     flexDirection: "row",
     alignItems: "center",

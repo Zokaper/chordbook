@@ -74,6 +74,49 @@ function migrate(raw: unknown): { songs: Song[]; changed: boolean } {
   return { songs, changed };
 }
 
+// ── Example seed song ─────────────────────────────────────────────────────────
+const SEED_CONTENT = [
+  "[Intro]",
+  "STRUM:D,-,DU,-,D,-,DU,-",
+  "A E D A",
+  "[Verse]",
+  "A E D A",
+  "Look at us, you and me back at it again",
+  "A E D A",
+  "Pickin' up the pieces of the mess we made back then",
+  "[Pre-Chorus]",
+  "A E",
+  "Turn the light on, baby, I'm home",
+  "[Chorus]",
+  "A E D A",
+  "Ooh, let the light in",
+  "A E D A",
+  "At your back door, yelling 'cause I wanna come in",
+  "A E D A",
+  "Ooh, let the light in",
+  "[Bridge]",
+  "D E A F#m",
+  "D E A",
+  "NOTE:Capo optional. Waltz feel — emphasise beat 1.",
+].join("\n");
+
+function makeSeedSong(): Song {
+  const now = new Date().toISOString();
+  return {
+    id: "seed_let_the_light_in",
+    title: "Let the Light In",
+    artist: "Lana Del Rey",
+    key: "A",
+    capo: 0,
+    tempo: "110",
+    tags: ["example", "folk"],
+    content: SEED_CONTENT,
+    chordVariants: {},
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function SongProvider({ children }: { children: React.ReactNode }) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,6 +134,11 @@ export function SongProvider({ children }: { children: React.ReactNode }) {
         if (changed) {
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
         }
+      } else {
+        // First run — seed the example song
+        const seed = [makeSeedSong()];
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+        setSongs(seed);
       }
     } catch (e) {
       console.error("Failed to load songs", e);
