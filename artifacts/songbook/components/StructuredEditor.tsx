@@ -1483,7 +1483,6 @@ function RiffEditorGrid({
       {/* Articulation picker */}
       {artPicker !== null && (
         <View style={riffStyles.picker}>
-          <Text style={[riffStyles.artPickerLabel, { color: colors.mutedForeground }]}>slide / bend:</Text>
           {ART_OPTIONS.map((a) => (
             <Pressable
               key={a}

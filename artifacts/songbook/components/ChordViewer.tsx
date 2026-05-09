@@ -395,10 +395,10 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                                   color: ch === "-" ? `${colors.primary}44` : colors.primary,
                                 }]}>{ch}</Text>
                                 {s.arts[ci] ? (
-                                  <Text style={[styles.riffArtChar, { color: colors.accent }]}>
-                                    {s.arts[ci]}
-                                  </Text>
-                                ) : null}
+                                  <Text style={[styles.riffArtChar, { color: colors.accent }]}>{s.arts[ci]}</Text>
+                                ) : (
+                                  <Text style={[styles.riffArtChar, { color: "transparent" }]}>{" "}</Text>
+                                )}
                               </React.Fragment>
                             ))}
                             <Text style={[styles.riffContent, { color: `${colors.primary}66` }]}>|</Text>
