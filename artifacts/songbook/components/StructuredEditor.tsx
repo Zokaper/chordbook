@@ -64,7 +64,8 @@ function makeEmptyGrid(numSlots: number): (number | string | null)[][] {
   return STRING_NAMES.map(() => Array(numSlots).fill(null));
 }
 
-const ART_CHAR_SET = new Set(["h", "p", "/", "\\", "b", "~"]);
+const ART_CHAR_SET = new Set(["h", "p", "/", "＼", "\\", "b", "~"]);
+const normalizeArt = (ch: string) => ch === "\\" ? "＼" : ch;
 
 function isChordLine(line: string) {
   const tokens = line.trim().split(/\s+/).filter(Boolean);
@@ -105,7 +106,7 @@ function parseRiff(raw: string): { grid: (number | string | null)[][]; numSlots:
           const fret = /\d/.test(token[0]) ? parseInt(token[0], 10) : null;
           const art = token.length > 1 ? token[1] : null;
           if (fret !== null) rows[i].push(fret);
-          if (art && ART_CHAR_SET.has(art)) rows[i].push(art);
+          if (art && ART_CHAR_SET.has(art)) rows[i].push(normalizeArt(art));
           if (fret === null && !art) rows[i].push(null);
         }
       });
@@ -114,7 +115,7 @@ function parseRiff(raw: string): { grid: (number | string | null)[][]; numSlots:
       [...inner].forEach((ch) => {
         if (ch === "-") rows[i].push(null);
         else if (/\d/.test(ch)) rows[i].push(parseInt(ch, 10));
-        else if (ART_CHAR_SET.has(ch)) rows[i].push(ch);
+        else if (ART_CHAR_SET.has(ch)) rows[i].push(normalizeArt(ch));
         else rows[i].push(null);
       });
     }
@@ -1297,7 +1298,7 @@ interface RiffEditorGridProps {
 }
 
 const FRET_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-const ART_OPTIONS  = ["h", "p", "/", "\\", "b", "~"] as const;
+const ART_OPTIONS  = ["h", "p", "/", "＼", "b", "~"] as const;
 
 function RiffEditorGrid({
   grid, numSlots, onCellChange, onAddSlot, onRemoveSlot, colors,
