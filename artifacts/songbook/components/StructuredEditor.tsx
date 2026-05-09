@@ -572,7 +572,9 @@ export function StructuredEditor({ content, onChange }: Props) {
           lines: s.lines.map((l) => {
             if (l.id !== lineId || l.type !== "strum") return l;
             const ri = REPEAT_CYCLE.indexOf(l.repeat);
-            return { ...l, repeat: REPEAT_CYCLE[(ri + 1) % REPEAT_CYCLE.length] };
+            const minRepeat = (l.repeatChords?.length ?? 0);
+            const next = REPEAT_CYCLE[(ri + 1) % REPEAT_CYCLE.length];
+            return { ...l, repeat: Math.max(next, minRepeat) };
           }),
         };
       })
@@ -888,6 +890,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                                         if (isActive) {
                                           setStrumChordPicker(null);
                                         } else {
+                                          setStrumCyclePicker(null);
                                           setStrumChordPicker({ lineId: line.id, beatIdx: bi });
                                         }
                                       }}
