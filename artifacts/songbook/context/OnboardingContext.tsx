@@ -22,10 +22,17 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(KEY).then((val) => {
-      if (val !== "1") setVisible(true);
-      setLoaded(true);
-    });
+    AsyncStorage.getItem(KEY)
+      .then((val) => {
+        if (val !== "1") setVisible(true);
+      })
+      .catch(() => {
+        // On storage failure default to showing onboarding
+        setVisible(true);
+      })
+      .finally(() => {
+        setLoaded(true);
+      });
   }, []);
 
   const markSeen = useCallback(async () => {
