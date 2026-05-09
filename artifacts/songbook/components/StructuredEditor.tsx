@@ -31,7 +31,7 @@ export type StrumBeat = "-" | "D" | "U" | "DU" | "x" | "C";
 type ChordLine = { id: string; type: "chord"; chords: string[] };
 type LyricLine = { id: string; type: "lyric"; text: string };
 type StrumLine = { id: string; type: "strum"; beats: StrumBeat[]; repeat: number };
-type RiffLine  = { id: string; type: "riff";  grid: (number | null)[][]; arts?: (string | null)[][]; numSlots: number };
+type RiffLine  = { id: string; type: "riff";  grid: (number | string | null)[][]; numSlots: number };
 type NoteLine  = { id: string; type: "note";  text: string };
 
 type SongLine = ChordLine | LyricLine | StrumLine | RiffLine | NoteLine;
@@ -60,13 +60,11 @@ const DEFAULT_BEATS: StrumBeat[] = ["-", "-", "-", "-", "-", "-", "-", "-"];
 const DEFAULT_SLOTS = 8;
 export const STRING_NAMES = ["e", "B", "G", "D", "A", "E"];
 
-function makeEmptyGrid(numSlots: number): (number | null)[][] {
+function makeEmptyGrid(numSlots: number): (number | string | null)[][] {
   return STRING_NAMES.map(() => Array(numSlots).fill(null));
 }
 
-function makeEmptyArts(numSlots: number): (string | null)[][] {
-  return STRING_NAMES.map(() => Array(numSlots).fill(null));
-}
+const ART_CHAR_SET = new Set(["h", "p", "/", "\\", "b", "~"]);
 
 function isChordLine(line: string) {
   const tokens = line.trim().split(/\s+/).filter(Boolean);
@@ -76,55 +74,59 @@ function isChordLine(line: string) {
 const REPEAT_CYCLE = [1, 2, 3, 4];
 
 // ─── RIFF serialise / parse ───────────────────────────────────────────────────
-export function serializeRiff(grid: (number | null)[][], numSlots: number, arts?: (string | null)[][]): string {
-  const hasArts = arts?.some((row) => row.some((a) => a != null));
+export function serializeRiff(grid: (number | string | null)[][], numSlots: number): string {
   return (
     "RIFF:" +
     grid
       .map((slots, i) => {
         const content = slots
           .slice(0, numSlots)
-          .map((s, j) => {
-            if (s === null) return "-";
-            const art = arts?.[i]?.[j] ?? null;
-            return art ? `${s}${art}` : `${s}`;
-          })
-          .join(hasArts ? "," : "");
+          .map((v) => v === null ? "-" : typeof v === "number" ? v.toString() : v)
+          .join("");
         return `${STRING_NAMES[i]}|${content}|`;
       })
       .join(":")
   );
 }
 
-function parseRiff(raw: string): { grid: (number | null)[][]; arts: (string | null)[][]; numSlots: number } {
+function parseRiff(raw: string): { grid: (number | string | null)[][]; numSlots: number } {
   const payload = raw.startsWith("RIFF:") ? raw.slice(5) : raw;
   const parts = payload.split(":");
-  let numSlots = DEFAULT_SLOTS;
-  const grid: (number | null)[][] = STRING_NAMES.map(() => Array(numSlots).fill(null));
-  const arts: (string | null)[][] = STRING_NAMES.map(() => Array(numSlots).fill(null));
+  const rows: (number | string | null)[][] = STRING_NAMES.map(() => []);
 
   parts.slice(0, 6).forEach((part, i) => {
     const inner = part.replace(/^[a-zA-Z]\|/, "").replace(/\|$/, "");
-    const isComma = inner.includes(",");
-    const rawSlots = isComma ? inner.split(",") : [...inner];
-    const slots = rawSlots.map((token) => {
-      if (token === "-" || token === "") return { fret: null, art: null };
-      const fret = /\d/.test(token[0]) ? parseInt(token[0], 10) : null;
-      const art = fret !== null && token.length > 1 ? token[1] : null;
-      return { fret, art };
-    });
-    numSlots = Math.max(numSlots, slots.length);
-    grid[i] = slots.map((s) => s.fret);
-    arts[i] = slots.map((s) => s.art);
+    if (inner.includes(",")) {
+      // Legacy format "5h,7,-" — expand arts into their own slots
+      inner.split(",").forEach((token) => {
+        if (token === "-" || token === "") {
+          rows[i].push(null);
+        } else {
+          const fret = /\d/.test(token[0]) ? parseInt(token[0], 10) : null;
+          const art = token.length > 1 ? token[1] : null;
+          if (fret !== null) rows[i].push(fret);
+          if (art && ART_CHAR_SET.has(art)) rows[i].push(art);
+          if (fret === null && !art) rows[i].push(null);
+        }
+      });
+    } else {
+      // New format: each char is its own slot
+      [...inner].forEach((ch) => {
+        if (ch === "-") rows[i].push(null);
+        else if (/\d/.test(ch)) rows[i].push(parseInt(ch, 10));
+        else if (ART_CHAR_SET.has(ch)) rows[i].push(ch);
+        else rows[i].push(null);
+      });
+    }
   });
 
-  grid.forEach((str, i) => {
-    while (str.length < numSlots) { str.push(null); arts[i].push(null); }
-    grid[i] = str.slice(0, numSlots);
-    arts[i] = arts[i].slice(0, numSlots);
+  const numSlots = Math.max(DEFAULT_SLOTS, ...rows.map((r) => r.length));
+  rows.forEach((row, i) => {
+    while (row.length < numSlots) row.push(null);
+    rows[i] = row.slice(0, numSlots);
   });
 
-  return { grid, arts, numSlots };
+  return { grid: rows, numSlots };
 }
 
 // ─── Parse / Serialize ────────────────────────────────────────────────────────
@@ -175,8 +177,8 @@ export function parseContent(raw: string): Section[] {
     } else if (line.startsWith("NOTE:")) {
       current.lines.push({ id: genId(), type: "note", text: line.slice(5) });
     } else if (line.startsWith("RIFF:")) {
-      const { grid, arts, numSlots } = parseRiff(line);
-      current.lines.push({ id: genId(), type: "riff", grid, arts, numSlots });
+      const { grid, numSlots } = parseRiff(line);
+      current.lines.push({ id: genId(), type: "riff", grid, numSlots });
     } else if (TAB_LINE_RE.test(line.trim())) {
       const inner = line.trim().replace(/^[eEADGBb]\|/, "").replace(/\|$/, "");
       const frets = [...inner].map((c) =>
@@ -217,7 +219,7 @@ export function serializeContent(sections: Section[]): string {
             return s;
           }
           if (l.type === "note")  return `NOTE:${l.text}`;
-          if (l.type === "riff")  return serializeRiff(l.grid, l.numSlots, l.arts);
+          if (l.type === "riff")  return serializeRiff(l.grid, l.numSlots);
           return l.text;
         });
       return [`[${s.name}]`, ...lines].join("\n");
@@ -280,7 +282,7 @@ export function StructuredEditor({ content, onChange }: Props) {
         switch (type) {
           case "chord": newLine = { id: genId(), type: "chord", chords: [] }; break;
           case "strum": newLine = { id: genId(), type: "strum", beats: [...DEFAULT_BEATS], repeat: 1 }; break;
-          case "riff":  newLine = { id: genId(), type: "riff", grid: makeEmptyGrid(DEFAULT_SLOTS), arts: makeEmptyArts(DEFAULT_SLOTS), numSlots: DEFAULT_SLOTS }; break;
+          case "riff":  newLine = { id: genId(), type: "riff", grid: makeEmptyGrid(DEFAULT_SLOTS), numSlots: DEFAULT_SLOTS }; break;
           case "note":  newLine = { id: genId(), type: "note", text: "" }; break;
           default:      newLine = { id: genId(), type: "lyric", text: "" };
         }
@@ -329,7 +331,7 @@ export function StructuredEditor({ content, onChange }: Props) {
 
   const updateRiffCell = (
     sectionId: string, lineId: string,
-    strIdx: number, slotIdx: number, val: number | null
+    strIdx: number, slotIdx: number, val: number | string | null
   ) =>
     setSections((prev) =>
       prev.map((s) => {
@@ -360,31 +362,7 @@ export function StructuredEditor({ content, onChange }: Props) {
               delta === 1
                 ? l.grid.map((row) => [...row, null])
                 : l.grid.map((row) => row.slice(0, -1));
-            const baseArts = l.arts ?? makeEmptyArts(l.numSlots);
-            const arts =
-              delta === 1
-                ? baseArts.map((row) => [...row, null])
-                : baseArts.map((row) => row.slice(0, -1));
-            return { ...l, grid, arts, numSlots: next };
-          }),
-        };
-      })
-    );
-
-  // ── Riff art mutation ──────────────────────────────────────────────────────
-  const updateRiffArt = (sectionId: string, lineId: string, strIdx: number, slotIdx: number, art: string | null) =>
-    setSections((prev) =>
-      prev.map((s) => {
-        if (s.id !== sectionId) return s;
-        return {
-          ...s,
-          lines: s.lines.map((l) => {
-            if (l.id !== lineId || l.type !== "riff") return l;
-            const newArts = l.arts
-              ? l.arts.map((row) => [...row])
-              : makeEmptyArts(l.numSlots);
-            newArts[strIdx][slotIdx] = art;
-            return { ...l, arts: newArts };
+            return { ...l, grid, numSlots: next };
           }),
         };
       })
@@ -855,13 +833,9 @@ export function StructuredEditor({ content, onChange }: Props) {
                       <View style={[styles.lineRow, { alignItems: "flex-start" }]}>
                         <RiffEditorGrid
                           grid={line.grid}
-                          arts={line.arts}
                           numSlots={line.numSlots}
                           onCellChange={(si, sli, val) =>
                             updateRiffCell(section.id, line.id, si, sli, val)
-                          }
-                          onArtChange={(si, sli, art) =>
-                            updateRiffArt(section.id, line.id, si, sli, art)
                           }
                           onAddSlot={() => changeRiffSlots(section.id, line.id, 1)}
                           onRemoveSlot={() => changeRiffSlots(section.id, line.id, -1)}
@@ -1314,11 +1288,9 @@ const paletteStyles = StyleSheet.create({
 
 // ─── RiffEditorGrid ────────────────────────────────────────────────────────────
 interface RiffEditorGridProps {
-  grid: (number | null)[][];
-  arts?: (string | null)[][];
+  grid: (number | string | null)[][];
   numSlots: number;
-  onCellChange: (strIdx: number, slotIdx: number, val: number | null) => void;
-  onArtChange: (strIdx: number, slotIdx: number, art: string | null) => void;
+  onCellChange: (strIdx: number, slotIdx: number, val: number | string | null) => void;
   onAddSlot: () => void;
   onRemoveSlot: () => void;
   colors: ColorsLike;
@@ -1328,13 +1300,11 @@ const FRET_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 const ART_OPTIONS  = ["h", "p", "/", "\\", "b", "~"] as const;
 
 function RiffEditorGrid({
-  grid, arts, numSlots, onCellChange, onArtChange, onAddSlot, onRemoveSlot, colors,
+  grid, numSlots, onCellChange, onAddSlot, onRemoveSlot, colors,
 }: RiffEditorGridProps) {
-  const [selected,  setSelected]  = useState<[number, number] | null>(null);
-  const [artPicker, setArtPicker] = useState<[number, number] | null>(null);
+  const [selected, setSelected] = useState<[number, number] | null>(null);
 
   const handleCellPress = (si: number, sli: number) => {
-    setArtPicker(null);
     if (selected && selected[0] === si && selected[1] === sli) {
       setSelected(null);
     } else {
@@ -1343,36 +1313,24 @@ function RiffEditorGrid({
   };
 
   const handleCellLongPress = (si: number, sli: number) => {
-    if ((grid[si]?.[sli] ?? null) !== null) {
-      setSelected(null);
-      setArtPicker([si, sli]);
-    }
+    onCellChange(si, sli, null);
+    setSelected(null);
   };
 
-  const handleFretPick = (fret: number) => {
+  const handlePick = (val: number | string) => {
     if (!selected) return;
-    onCellChange(selected[0], selected[1], fret);
+    onCellChange(selected[0], selected[1], val);
     setSelected(null);
   };
 
   const handleClear = () => {
     if (!selected) return;
     onCellChange(selected[0], selected[1], null);
-    onArtChange(selected[0], selected[1], null);
     setSelected(null);
   };
 
-  const handleArtPick = (art: string | null) => {
-    if (!artPicker) return;
-    onArtChange(artPicker[0], artPicker[1], art);
-    setArtPicker(null);
-  };
-
-  const selSi  = selected?.[0]  ?? -1;
-  const selSli = selected?.[1]  ?? -1;
-  const artSi  = artPicker?.[0] ?? -1;
-  const artSli = artPicker?.[1] ?? -1;
-  const currentArt = artPicker ? (arts?.[artSi]?.[artSli] ?? null) : null;
+  const selSi  = selected?.[0] ?? -1;
+  const selSli = selected?.[1] ?? -1;
 
   return (
     <View style={riffStyles.root}>
@@ -1390,10 +1348,9 @@ function RiffEditorGrid({
               <View style={riffStyles.slots}>
                 {Array.from({ length: numSlots }, (_, sli) => {
                   const val = grid[si]?.[sli] ?? null;
-                  const art = arts?.[si]?.[sli] ?? null;
-                  const isSelected   = selSi === si && selSli === sli;
-                  const isArtTarget  = artSi === si && artSli === sli;
-                  const hasFret = val !== null;
+                  const isSelected = selSi === si && selSli === sli;
+                  const hasValue = val !== null;
+                  const isArt = typeof val === "string";
                   return (
                     <React.Fragment key={sli}>
                       {sli === 4 && (
@@ -1405,21 +1362,17 @@ function RiffEditorGrid({
                         style={({ pressed }) => [
                           riffStyles.cell,
                           {
-                            backgroundColor: isArtTarget
-                              ? `${colors.primary}30`
-                              : isSelected
+                            backgroundColor: isSelected
                               ? colors.primary
-                              : hasFret
+                              : hasValue
                               ? `${colors.primary}18`
                               : "transparent",
-                            borderColor: isArtTarget
+                            borderColor: isSelected
                               ? colors.primary
-                              : isSelected
-                              ? colors.primary
-                              : hasFret
+                              : hasValue
                               ? `${colors.primary}55`
                               : `${colors.border}88`,
-                            opacity: pressed && !isSelected && !isArtTarget ? 0.7 : 1,
+                            opacity: pressed && !isSelected ? 0.7 : 1,
                           },
                         ]}
                       >
@@ -1429,17 +1382,17 @@ function RiffEditorGrid({
                             {
                               color: isSelected
                                 ? colors.primaryForeground
-                                : hasFret
+                                : isArt
+                                ? colors.accent
+                                : hasValue
                                 ? colors.primary
                                 : `${colors.border}cc`,
+                              fontStyle: isArt && !isSelected ? "italic" : "normal",
                             },
                           ]}
                         >
-                          {hasFret ? val!.toString() : "·"}
+                          {hasValue ? (typeof val === "number" ? val.toString() : val) : "·"}
                         </Text>
-                        {hasFret && art ? (
-                          <Text style={[riffStyles.artBadge, { color: colors.accent }]}>{art}</Text>
-                        ) : null}
                       </Pressable>
                     </React.Fragment>
                   );
@@ -1450,13 +1403,13 @@ function RiffEditorGrid({
         </View>
       </ScrollView>
 
-      {/* Fret picker */}
-      {selected !== null && artPicker === null && (
+      {/* Combined picker: frets + arts */}
+      {selected !== null && (
         <View style={riffStyles.picker}>
           {FRET_OPTIONS.map((f) => (
             <Pressable
               key={f}
-              onPress={() => handleFretPick(f)}
+              onPress={() => handlePick(f)}
               style={({ pressed }) => [
                 riffStyles.fretBtn,
                 { backgroundColor: pressed ? colors.primary : colors.secondary, borderColor: colors.border },
@@ -1465,45 +1418,24 @@ function RiffEditorGrid({
               <Text style={[riffStyles.fretBtnText, { color: colors.foreground }]}>{f}</Text>
             </Pressable>
           ))}
-          <Pressable
-            onPress={handleClear}
-            style={({ pressed }) => [
-              riffStyles.fretBtn,
-              {
-                backgroundColor: pressed ? colors.destructive : `${colors.destructive}15`,
-                borderColor: `${colors.destructive}55`,
-              },
-            ]}
-          >
-            <Feather name="x" size={13} color={colors.destructive} />
-          </Pressable>
-        </View>
-      )}
-
-      {/* Articulation picker */}
-      {artPicker !== null && (
-        <View style={riffStyles.picker}>
+          <View style={[riffStyles.pickerDiv, { backgroundColor: colors.border }]} />
           {ART_OPTIONS.map((a) => (
             <Pressable
               key={a}
-              onPress={() => handleArtPick(a)}
+              onPress={() => handlePick(a)}
               style={({ pressed }) => [
                 riffStyles.fretBtn,
                 {
-                  backgroundColor: currentArt === a
-                    ? colors.primary
-                    : pressed ? colors.secondary : `${colors.primary}12`,
-                  borderColor: currentArt === a ? colors.primary : `${colors.primary}40`,
+                  backgroundColor: pressed ? colors.primary : `${colors.primary}12`,
+                  borderColor: `${colors.primary}40`,
                 },
               ]}
             >
-              <Text style={[riffStyles.fretBtnText, {
-                color: currentArt === a ? colors.primaryForeground : colors.primary,
-              }]}>{a}</Text>
+              <Text style={[riffStyles.fretBtnText, { color: colors.accent, fontStyle: "italic" }]}>{a}</Text>
             </Pressable>
           ))}
           <Pressable
-            onPress={() => handleArtPick(null)}
+            onPress={handleClear}
             style={({ pressed }) => [
               riffStyles.fretBtn,
               {
@@ -1549,9 +1481,8 @@ const riffStyles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   cellText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  artBadge: { position: "absolute", right: 2, bottom: 1, fontSize: 8, fontFamily: "Inter_700Bold" },
   picker: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, paddingTop: 2, paddingLeft: 18 },
-  artPickerLabel: { fontSize: 9, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" },
+  pickerDiv: { width: 1, height: 24, opacity: 0.4, marginHorizontal: 2 },
   fretBtn: {
     width: 32, height: 32, borderRadius: 8, borderWidth: 1,
     alignItems: "center", justifyContent: "center",
