@@ -392,8 +392,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             return (
               <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}08`, borderColor: `${colors.primary}20` }]}>
                 {!hasChordChanges && <Text style={[styles.strumLabel, { color: `${colors.primary}70` }]}>STRUM</Text>}
-                {hasChordChanges && renderChordChangeRow()}
-                {renderBeats()}
+                {renderStrumGrid()}
                 {repeat > 1 && (
                   <View style={styles.repeatRow}>
                     <Text style={[styles.repeatLabel, { color: `${colors.primary}70` }]}>× {repeat}</Text>
