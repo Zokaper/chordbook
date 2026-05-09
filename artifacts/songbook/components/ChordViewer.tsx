@@ -372,6 +372,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             const strings = parseRiffLine((item as ParsedLine).text.trim());
             const used = strings.filter((s) => /[^-]/.test(s.slots));
             const rows = used.length > 0 ? used : strings;
+            const blockHasArts = rows.some((s) => s.arts.some((a) => a !== null));
             return (
               <View
                 key={idx}
@@ -384,9 +385,13 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                   <View>
                     {rows.map((s, si) => {
                       let rowStr = "|";
-                      for (let ci = 0; ci < s.slots.length; ci++) {
-                        rowStr += s.slots[ci];
-                        if (s.arts[ci]) rowStr += s.arts[ci];
+                      if (blockHasArts) {
+                        for (let ci = 0; ci < s.slots.length; ci++) {
+                          rowStr += s.slots[ci];
+                          if (ci < s.slots.length - 1) rowStr += s.arts[ci] ?? "-";
+                        }
+                      } else {
+                        rowStr += s.slots;
                       }
                       rowStr += "|";
                       return (
