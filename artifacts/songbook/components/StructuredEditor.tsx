@@ -164,7 +164,7 @@ export function parseContent(raw: string): Section[] {
           if (ai < 0) return;
           const name = cc.slice(0, ai);
           const beatIdx = parseInt(cc.slice(ai + 1), 10);
-          if (!isNaN(beatIdx) && beatIdx >= 0 && name) chordChanges[beatIdx] = name;
+          if (!isNaN(beatIdx) && beatIdx >= 0 && beatIdx < rawBeats.length && name) chordChanges[beatIdx] = name;
         });
       }
 
@@ -830,6 +830,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                           horizontal
                           showsHorizontalScrollIndicator={false}
                           keyboardShouldPersistTaps="always"
+                          onScrollBeginDrag={() => setStrumChordPicker(null)}
                           style={{ flex: 1 }}
                         >
                           <View>
