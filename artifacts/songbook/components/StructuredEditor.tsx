@@ -30,7 +30,7 @@ export type StrumBeat = "-" | "D" | "U" | "DU" | "x" | "C";
 
 type ChordLine = { id: string; type: "chord"; chords: string[] };
 type LyricLine = { id: string; type: "lyric"; text: string };
-type StrumLine = { id: string; type: "strum"; beats: StrumBeat[]; repeat: number; chordChanges?: Record<number, string> };
+type StrumLine = { id: string; type: "strum"; beats: StrumBeat[]; repeat: number; chordChanges?: Record<number, string>; repeatChords?: string[] };
 type RiffLine  = { id: string; type: "riff";  grid: (number | string | null)[][]; numSlots: number };
 type NoteLine  = { id: string; type: "note";  text: string };
 
@@ -179,9 +179,14 @@ export function parseContent(raw: string): Section[] {
 
       const repeatStr = rest.find((p) => p.startsWith("REPEAT:"));
       const repeat = repeatStr ? Math.max(1, parseInt(repeatStr.slice(7), 10)) : 1;
+      const cycleSegment = rest.find((p) => p.startsWith("CYCLE:"));
+      const repeatChords = cycleSegment
+        ? cycleSegment.slice(6).split(",").filter(Boolean)
+        : [];
       current.lines.push({
         id: genId(), type: "strum", beats, repeat,
         ...(Object.keys(chordChanges).length > 0 ? { chordChanges } : {}),
+        ...(repeatChords.length > 0 ? { repeatChords } : {}),
       });
     } else if (line.startsWith("CHORD:")) {
       current.lines.push({
@@ -222,7 +227,7 @@ export function serializeContent(sections: Section[]): string {
       const lines = s.lines
         .filter((l) => {
           if (l.type === "chord") return l.chords.length > 0;
-          if (l.type === "strum") return l.beats.some((b) => b !== "-") || (!!l.chordChanges && Object.keys(l.chordChanges).length > 0);
+          if (l.type === "strum") return l.beats.some((b) => b !== "-") || (!!l.chordChanges && Object.keys(l.chordChanges).length > 0) || (!!l.repeatChords && l.repeatChords.length > 0);
           if (l.type === "riff")  return l.grid.some((row) => row.some((c) => c !== null));
           return l.text.trim() !== "";
         })
@@ -237,6 +242,9 @@ export function serializeContent(sections: Section[]): string {
                 .map(([idx, name]) => `${name}@${idx}`)
                 .join(",");
               s += `;CHORDS:${chordsStr}`;
+            }
+            if (l.repeatChords && l.repeatChords.length > 0) {
+              s += `;CYCLE:${l.repeatChords.join(",")}`;
             }
             return s;
           }
@@ -273,6 +281,7 @@ export function StructuredEditor({ content, onChange }: Props) {
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [strumChordPicker, setStrumChordPicker] = useState<{ lineId: string; beatIdx: number } | null>(null);
+  const [strumCyclePicker, setStrumCyclePicker] = useState<string | null>(null);
 
   const isFirstRender = useRef(true);
   // Lyric chord-palette state
@@ -519,6 +528,36 @@ export function StructuredEditor({ content, onChange }: Props) {
             const cc = { ...(l.chordChanges ?? {}) };
             if (chord === null) { delete cc[beatIdx]; } else { cc[beatIdx] = chord; }
             return { ...l, chordChanges: Object.keys(cc).length > 0 ? cc : undefined };
+          }),
+        };
+      })
+    );
+
+  const addRepeatChord = (sectionId: string, lineId: string, chord: string) =>
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          lines: s.lines.map((l) => {
+            if (l.id !== lineId || l.type !== "strum") return l;
+            const repeatChords = [...(l.repeatChords ?? []), chord];
+            return { ...l, repeatChords, repeat: Math.max(l.repeat, repeatChords.length) };
+          }),
+        };
+      })
+    );
+
+  const removeRepeatChord = (sectionId: string, lineId: string, idx: number) =>
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          lines: s.lines.map((l) => {
+            if (l.id !== lineId || l.type !== "strum") return l;
+            const repeatChords = (l.repeatChords ?? []).filter((_, i) => i !== idx);
+            return { ...l, repeatChords: repeatChords.length > 0 ? repeatChords : undefined };
           }),
         };
       })
@@ -830,7 +869,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                           horizontal
                           showsHorizontalScrollIndicator={false}
                           keyboardShouldPersistTaps="always"
-                          onScrollBeginDrag={() => setStrumChordPicker(null)}
+                          onScrollBeginDrag={() => { setStrumChordPicker(null); setStrumCyclePicker(null); }}
                           style={{ flex: 1 }}
                         >
                           <View>
@@ -899,7 +938,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                                     <View style={[styles.strumBarDiv, { backgroundColor: colors.border }]} />
                                   )}
                                   <Pressable
-                                    onPress={() => { setStrumChordPicker(null); updateBeat(section.id, line.id, bi, cycleBeat(beat)); }}
+                                    onPress={() => { setStrumChordPicker(null); setStrumCyclePicker(null); updateBeat(section.id, line.id, bi, cycleBeat(beat)); }}
                                     style={({ pressed }) => [
                                       styles.strumBeat,
                                       {
@@ -944,7 +983,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                           </Text>
                         </Pressable>
                         <Pressable
-                          onPress={() => { setStrumChordPicker(null); setActiveMenu(activeMenu === line.id ? null : line.id); }}
+                          onPress={() => { setStrumChordPicker(null); setStrumCyclePicker(null); setActiveMenu(activeMenu === line.id ? null : line.id); }}
                           hitSlop={10}
                           style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 0.65 })}
                         >
@@ -971,6 +1010,88 @@ export function StructuredEditor({ content, onChange }: Props) {
                           <Text style={[styles.strumBeatBtnText, { color: colors.mutedForeground }]}>beat</Text>
                         </Pressable>
                       </View>
+                      {/* ── Repeat chord-cycle row ── */}
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.strumCycleScroll}
+                        contentContainerStyle={styles.strumCycleScrollContent}
+                        keyboardShouldPersistTaps="always"
+                      >
+                        {(line.repeatChords ?? []).map((chord, ci) => (
+                          <React.Fragment key={ci}>
+                            {ci > 0 && (
+                              <Text style={[styles.strumCycleArrow, { color: colors.mutedForeground }]}>→</Text>
+                            )}
+                            <Pressable
+                              onPress={() => removeRepeatChord(section.id, line.id, ci)}
+                              style={({ pressed }) => [
+                                styles.strumCycleChip,
+                                { backgroundColor: `${colors.accent}18`, borderColor: `${colors.accent}55`, opacity: pressed ? 0.7 : 1 },
+                              ]}
+                            >
+                              <Text style={[styles.strumCycleChipText, { color: colors.accent }]}>{chord}</Text>
+                              <Feather name="x" size={9} color={`${colors.accent}99`} />
+                            </Pressable>
+                          </React.Fragment>
+                        ))}
+                        <Pressable
+                          onPress={() => {
+                            setStrumChordPicker(null);
+                            setStrumCyclePicker(strumCyclePicker === line.id ? null : line.id);
+                          }}
+                          style={({ pressed }) => [
+                            styles.strumCycleAddBtn,
+                            { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
+                          ]}
+                        >
+                          <Feather name="plus" size={11} color={colors.mutedForeground} />
+                          <Text style={[styles.strumCycleBtnText, { color: colors.mutedForeground }]}>chord</Text>
+                        </Pressable>
+                      </ScrollView>
+                      {/* ── Cycle chord picker ── */}
+                      {strumCyclePicker === line.id && (
+                        <View style={[styles.strumChordPickerPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                          <View style={styles.strumChordPickerHeader}>
+                            <Text style={[styles.strumChordPickerLabel, { color: colors.mutedForeground }]}>
+                              Add chord to cycle
+                            </Text>
+                            <Pressable onPress={() => setStrumCyclePicker(null)} hitSlop={8} style={{ marginLeft: "auto" }}>
+                              <Feather name="x" size={14} color={colors.mutedForeground} />
+                            </Pressable>
+                          </View>
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            keyboardShouldPersistTaps="always"
+                            contentContainerStyle={styles.strumChordPickerChips}
+                          >
+                            {(songChordNames.length > 0 ? songChordNames : uniqueChordNames).map((name) => (
+                              <Pressable
+                                key={name}
+                                onPress={() => {
+                                  addRepeatChord(section.id, line.id, name);
+                                  setStrumCyclePicker(null);
+                                }}
+                                style={({ pressed }) => [
+                                  styles.strumChordPickerChip,
+                                  {
+                                    backgroundColor: pressed ? colors.accent : `${colors.accent}18`,
+                                    borderColor: `${colors.accent}55`,
+                                  },
+                                ]}
+                              >
+                                <Text style={[styles.strumChordPickerChipText, { color: colors.accent }]}>{name}</Text>
+                              </Pressable>
+                            ))}
+                            {songChordNames.length === 0 && uniqueChordNames.length === 0 && (
+                              <Text style={[styles.strumChordPickerEmpty, { color: colors.mutedForeground }]}>
+                                Add chords to your song first
+                              </Text>
+                            )}
+                          </ScrollView>
+                        </View>
+                      )}
                       {/* ── Inline chord-change picker ── */}
                       {scPickerOpen && (
                         <View style={[styles.strumChordPickerPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -1886,6 +2007,21 @@ const styles = StyleSheet.create({
   },
   strumChordPickerChipText: { fontSize: 13, fontFamily: "Inter_700Bold" },
   strumChordPickerEmpty: { fontSize: 12, fontFamily: "Inter_400Regular", opacity: 0.6, paddingHorizontal: 4 },
+  strumCycleScroll: { marginTop: 2 },
+  strumCycleScrollContent: {
+    flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 4, paddingHorizontal: 2,
+  },
+  strumCycleChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 4,
+  },
+  strumCycleChipText: { fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.3 },
+  strumCycleArrow: { fontSize: 12, fontFamily: "Inter_600SemiBold", opacity: 0.45 },
+  strumCycleAddBtn: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  strumCycleBtnText: { fontSize: 11, fontFamily: "Inter_500Medium" },
   strumBeatControls: {
     flexDirection: "row", alignItems: "center", gap: 8,
     paddingLeft: 2, paddingTop: 2, paddingBottom: 2,

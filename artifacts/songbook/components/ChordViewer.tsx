@@ -61,6 +61,7 @@ interface StrumData {
   beats: StrumBeat[];
   repeat: number;
   chordChanges: Record<number, string>;
+  repeatChords: string[];
 }
 
 function parseStrumData(raw: string): StrumData {
@@ -82,7 +83,9 @@ function parseStrumData(raw: string): StrumData {
       if (!isNaN(beatIdx) && beatIdx >= 0 && name) chordChanges[beatIdx] = name;
     });
   }
-  return { beats, repeat, chordChanges };
+  const cycleSegment = rest.find((p) => p.startsWith("CYCLE:"));
+  const repeatChords = cycleSegment ? cycleSegment.slice(6).split(",").filter(Boolean) : [];
+  return { beats, repeat, chordChanges, repeatChords };
 }
 
 // ─── Riff helpers ─────────────────────────────────────────────────────────────
@@ -288,9 +291,34 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
 
           // ── Strum ─────────────────────────────────────────────────────────
           if (item.type === "strum") {
-            const { beats, repeat, chordChanges } = parseStrumData((item as ParsedLine).text.trim());
+            const { beats, repeat, chordChanges, repeatChords } = parseStrumData((item as ParsedLine).text.trim());
             const pairedChords = (item as ParsedLine).pairedChords;
             const hasChordChanges = Object.keys(chordChanges).length > 0;
+            const hasCycle = repeatChords.length > 0;
+
+            const renderCycleRow = () => (
+              <View style={styles.strumCycleRow}>
+                {repeatChords.map((chord, ci) => {
+                  const isStd = CHORD_TOKEN_REGEX.test(chord);
+                  const transposed = capo > 0 && isStd ? transposeChord(chord, capo) : null;
+                  const showLabel = transposed !== null && transposed !== chord;
+                  const display = capoMode === "real" && showLabel ? transposed! : chord;
+                  return (
+                    <React.Fragment key={ci}>
+                      {ci > 0 && (
+                        <Text style={[styles.strumCycleArrow, { color: colors.mutedForeground }]}>→</Text>
+                      )}
+                      <View style={[styles.strumCycleChip, { backgroundColor: `${colors.accent}14`, borderColor: `${colors.accent}38` }]}>
+                        <Text style={[styles.strumCycleChipText, { color: colors.accent }]}>{display}</Text>
+                        {capoMode === "both" && showLabel && (
+                          <Text style={[styles.chordChipSub, { color: colors.primary }]}>{transposed}</Text>
+                        )}
+                      </View>
+                    </React.Fragment>
+                  );
+                })}
+              </View>
+            );
 
             // Single shared horizontal scroll containing chord-change row + beat row
             const renderStrumGrid = () => (
@@ -379,6 +407,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                       );
                     })}
                   </View>
+                  {hasCycle && renderCycleRow()}
                   {renderStrumGrid()}
                   {repeat > 1 && (
                     <View style={styles.repeatRow}>
@@ -391,7 +420,8 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
 
             return (
               <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}08`, borderColor: `${colors.primary}20` }]}>
-                {!hasChordChanges && <Text style={[styles.strumLabel, { color: `${colors.primary}70` }]}>STRUM</Text>}
+                {!hasChordChanges && !hasCycle && <Text style={[styles.strumLabel, { color: `${colors.primary}70` }]}>STRUM</Text>}
+                {hasCycle && renderCycleRow()}
                 {renderStrumGrid()}
                 {repeat > 1 && (
                   <View style={styles.repeatRow}>
@@ -580,6 +610,12 @@ const styles = StyleSheet.create({
   },
   strumChangeChipText: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.2 },
   strumChangeDot: { fontSize: 12, lineHeight: 14, opacity: 0.5 },
+  strumCycleRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, paddingBottom: 6 },
+  strumCycleArrow: { fontSize: 12, fontFamily: "Inter_600SemiBold", opacity: 0.45 },
+  strumCycleChip: {
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 3, alignItems: "center",
+  },
+  strumCycleChipText: { fontSize: 14, fontFamily: "Inter_700Bold", letterSpacing: 0.3 },
   strumLabel: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.5, textTransform: "uppercase" },
   repeatRow: { alignItems: "flex-end" },
   repeatLabel: { fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
