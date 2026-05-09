@@ -196,12 +196,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
   }
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.horizontalScroll}
-    >
-      <View style={styles.container}>
+    <View style={styles.container}>
         {renderItems.map((item, idx) => {
           if (item.type === "empty") return <View key={idx} style={styles.spacer} />;
 
@@ -262,9 +257,11 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
           // ── Tab line ──────────────────────────────────────────────────────
           if (item.type === "tab") {
             return (
-              <Text key={idx} style={[styles.tabLine, { color: colors.primary }]}>
-                {(item as ParsedLine).text}
-              </Text>
+              <ScrollView key={idx} horizontal showsHorizontalScrollIndicator={false}>
+                <Text style={[styles.tabLine, { color: colors.primary }]}>
+                  {(item as ParsedLine).text}
+                </Text>
+              </ScrollView>
             );
           }
 
@@ -273,61 +270,50 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             const { beats, repeat } = parseStrumData((item as ParsedLine).text.trim());
             const pairedChords = (item as ParsedLine).pairedChords;
 
+            const beatsRow = (
+              <View style={styles.beatsRow}>
+                {beats.map((beat, bi) => (
+                  <Text
+                    key={bi}
+                    style={[
+                      styles.beatSym,
+                      {
+                        color:
+                          beat === "C" ? colors.accent :
+                          beat === "-" ? colors.border :
+                          beat === "x" ? colors.destructive :
+                          colors.primary,
+                        opacity: beat === "-" ? 0.4 : 1,
+                      },
+                    ]}
+                  >
+                    {BEAT_SYMBOL[beat]}
+                  </Text>
+                ))}
+              </View>
+            );
+
             if (pairedChords && pairedChords.length > 0) {
-              // Split beats at "C" (chord-change) markers into segments
-              const segments: StrumBeat[][] = [];
-              let seg: StrumBeat[] = [];
-              for (const beat of beats) {
-                if (beat === "C") { segments.push(seg); seg = []; }
-                else seg.push(beat);
-              }
-              segments.push(seg);
-              const firstNonEmpty = segments.find((s) => s.length > 0) ?? [];
-
-              // Each chord gets one segment; if a segment is empty (e.g. trailing ↺),
-              // fall back to the first non-empty segment so every chord is displayed.
-              const groups: { chord: string; groupBeats: StrumBeat[] }[] = pairedChords.map((chord, i) => {
-                const raw = segments[i % segments.length];
-                return { chord, groupBeats: raw && raw.length > 0 ? raw : firstNonEmpty };
-              });
-              if (groups.length === 0) {
-                groups.push({ chord: pairedChords[0] ?? "?", groupBeats: beats.filter((b) => b !== "C") });
-              }
-
               return (
-                <View key={idx}>
-                  <View style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
-                    {groups.map((group, ci) => {
-                      const isStd = CHORD_TOKEN_REGEX.test(group.chord);
-                      const transposed = capo > 0 && isStd ? transposeChord(group.chord, capo) : null;
-                      const showLabel = transposed !== null && transposed !== group.chord;
+                <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
+                  <View style={styles.chordNamesRow}>
+                    {pairedChords.map((chord, ci) => {
+                      const isStd = CHORD_TOKEN_REGEX.test(chord);
+                      const transposed = capo > 0 && isStd ? transposeChord(chord, capo) : null;
+                      const showLabel = transposed !== null && transposed !== chord;
                       return (
-                        <View key={ci} style={styles.chordGroup}>
-                          <View style={styles.chordGroupNameWrap}>
-                            {capoMode !== "real" && (
-                              <Text style={[styles.chordGroupName, { color: colors.accent }]}>{group.chord}</Text>
-                            )}
-                            {capoMode === "real" && (
-                              <Text style={[styles.chordGroupName, { color: colors.accent }]}>{showLabel ? transposed : group.chord}</Text>
-                            )}
-                            {capoMode === "both" && showLabel && (
-                              <Text style={[styles.chordGroupTransposed, { color: colors.primary }]}>{transposed}</Text>
-                            )}
-                          </View>
-                          <View style={styles.chordGroupBeats}>
-                            {group.groupBeats.map((beat, bi) => (
-                              <Text key={bi} style={[styles.chordGroupBeat, { color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : colors.primary, opacity: beat === "-" ? 0.4 : 1 }]}>
-                                {BEAT_SYMBOL[beat]}
-                              </Text>
-                            ))}
-                          </View>
-                          {ci < groups.length - 1 && (
-                            <Text style={[styles.chordGroupDiv, { color: colors.border }]}>│</Text>
+                        <View key={ci} style={styles.chordNameItem}>
+                          <Text style={[styles.chordGroupName, { color: colors.accent }]}>
+                            {capoMode === "real" && showLabel ? transposed : chord}
+                          </Text>
+                          {capoMode === "both" && showLabel && (
+                            <Text style={[styles.chordGroupTransposed, { color: colors.primary }]}>{transposed}</Text>
                           )}
                         </View>
                       );
                     })}
                   </View>
+                  {beatsRow}
                   {repeat > 1 && (
                     <Text style={[styles.repeatLabel, { color: `${colors.primary}88` }]}>× {repeat}</Text>
                   )}
@@ -335,25 +321,10 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
               );
             }
 
-            // Simple strum (no paired chord line)
             return (
-              <View key={idx}>
-                <View style={[styles.strumContainer, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
-                  <Text style={[styles.strumLabel, { color: `${colors.primary}88` }]}>strum</Text>
-                  <View style={styles.strumBeats}>
-                    {beats.map((beat, bi) => (
-                      <React.Fragment key={bi}>
-                        {bi === 4 && <Text style={[styles.strumBarChar, { color: colors.border }]}>│</Text>}
-                        <Text style={[styles.strumSymbol, {
-                          color: beat === "-" ? colors.border : beat === "x" ? colors.destructive : beat === "C" ? colors.accent : colors.primary,
-                          opacity: beat === "-" ? 0.4 : 1,
-                        }]}>
-                          {BEAT_SYMBOL[beat]}
-                        </Text>
-                      </React.Fragment>
-                    ))}
-                  </View>
-                </View>
+              <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
+                <Text style={[styles.strumLabel, { color: `${colors.primary}88` }]}>strum</Text>
+                {beatsRow}
                 {repeat > 1 && (
                   <Text style={[styles.repeatLabel, { color: `${colors.primary}88` }]}>× {repeat}</Text>
                 )}
@@ -373,12 +344,16 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                   { backgroundColor: `${colors.primary}07`, borderColor: `${colors.primary}20` },
                 ]}
               >
-                {(used.length > 0 ? used : strings).map((s, si) => (
-                  <View key={si} style={styles.riffRow}>
-                    <Text style={[styles.riffStrName, { color: `${colors.primary}88` }]}>{s.name}</Text>
-                    <Text style={[styles.riffContent, { color: colors.primary }]}>{`|${s.slots}|`}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View>
+                    {(used.length > 0 ? used : strings).map((s, si) => (
+                      <View key={si} style={styles.riffRow}>
+                        <Text style={[styles.riffStrName, { color: `${colors.primary}88` }]}>{s.name}</Text>
+                        <Text style={[styles.riffContent, { color: colors.primary }]}>{`|${s.slots}|`}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                </ScrollView>
               </View>
             );
           }
@@ -443,13 +418,11 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             </Text>
           );
         })}
-      </View>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  horizontalScroll: { flexGrow: 1 },
   container: { paddingHorizontal: 2 },
   empty: { paddingVertical: 20, alignItems: "center" },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
@@ -459,10 +432,6 @@ const styles = StyleSheet.create({
     fontSize: 12, fontFamily: "Inter_700Bold",
     letterSpacing: 1.2, textTransform: "uppercase",
     marginTop: 18, marginBottom: 6,
-  },
-  chordLine: {
-    fontSize: 15, fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.5, lineHeight: 22,
   },
   chordTokenRow: {
     flexDirection: "row",
@@ -485,66 +454,46 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     marginVertical: 2,
   },
-  chordProSeg: {
-    alignItems: "flex-start",
-  },
-  chordProNameBox: {
-    minHeight: 18,
-    justifyContent: "flex-end",
-  },
-  chordProNameStack: {
-    alignItems: "flex-start",
-  },
-  chordProName: {
-    fontSize: 12,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.3,
-    lineHeight: 17,
-  },
-  chordProTransposed: {
-    fontSize: 9,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.3,
-    opacity: 0.75,
-  },
+  chordProSeg: { alignItems: "flex-start" },
+  chordProNameBox: { minHeight: 18, justifyContent: "flex-end" },
+  chordProNameStack: { alignItems: "flex-start" },
+  chordProName: { fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.3, lineHeight: 17 },
+  chordProTransposed: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.3, opacity: 0.75 },
 
-  // ── Chord + Strum paired block ─────────────────────────────────────────────
+  // ── Chord + Strum block (paired or standalone) ─────────────────────────────
   chordStrumBlock: {
-    flexDirection: "row",
-    alignItems: "stretch",
     borderRadius: 10,
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginVertical: 4,
+    gap: 6,
   },
-  chordGroup: { flexDirection: "row", alignItems: "center", gap: 5 },
-  chordGroupNameWrap: { alignItems: "center" },
-  chordGroupName: { fontSize: 15, fontFamily: "Inter_700Bold", letterSpacing: 0.3, minWidth: 28 },
+  chordNamesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    gap: 14,
+  },
+  chordNameItem: { alignItems: "flex-start" },
+  chordGroupName: { fontSize: 16, fontFamily: "Inter_700Bold", letterSpacing: 0.3 },
   chordGroupTransposed: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.3, opacity: 0.75 },
-  chordGroupBeats: { flexDirection: "row", alignItems: "center", gap: 3 },
-  chordGroupBeat: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  chordGroupDiv: { fontSize: 18, fontFamily: "Inter_400Regular", opacity: 0.35, marginHorizontal: 6 },
-
-  // ── Standalone strum ───────────────────────────────────────────────────────
-  strumContainer: {
-    flexDirection: "row", alignItems: "center",
-    borderRadius: 8, borderWidth: 1,
-    paddingHorizontal: 10, paddingVertical: 6,
-    marginVertical: 3, gap: 10,
+  beatsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 4,
   },
+  beatSym: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   strumLabel: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.2, textTransform: "uppercase" },
-  strumBeats: { flexDirection: "row", alignItems: "center", gap: 6 },
-  strumBarChar: { fontSize: 16, opacity: 0.4, marginHorizontal: 2 },
-  strumSymbol: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  repeatLabel: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 0.3, textAlign: "right", marginTop: 1, marginBottom: 3 },
+  repeatLabel: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 0.3, textAlign: "right" },
   chordWarnNote: { fontSize: 10, fontFamily: "Inter_400Regular", fontStyle: "italic", marginTop: 2, marginBottom: 2, opacity: 0.7 },
 
   // ── Riff block ─────────────────────────────────────────────────────────────
   riffBlock: {
     borderRadius: 8, borderWidth: 1,
     paddingHorizontal: 10, paddingVertical: 7,
-    marginVertical: 3, gap: 1,
+    marginVertical: 3,
   },
   riffRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   riffStrName: { width: 10, fontSize: 11, fontFamily: "Inter_600SemiBold", textAlign: "right" },
