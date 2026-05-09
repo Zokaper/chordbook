@@ -247,6 +247,7 @@ export function StructuredEditor({ content, onChange }: Props) {
   const [pickerFilter, setPickerFilter] = useState("");
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [showSectionPicker, setShowSectionPicker] = useState(false);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   const isFirstRender = useRef(true);
   // Lyric chord-palette state
@@ -668,14 +669,23 @@ export function StructuredEditor({ content, onChange }: Props) {
                             <Feather name="plus" size={13} color={colors.mutedForeground} />
                           </Pressable>
                         </View>
-                        <LineActions
-                          onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
-                          onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
-                          onDuplicate={() => duplicateLine(section.id, line.id)}
-                          onDelete={() => deleteLine(section.id, line.id)}
+                        <Pressable
+                          onPress={() => setActiveMenu(activeMenu === line.id ? null : line.id)}
+                          hitSlop={10}
+                          style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 0.65 })}
+                        >
+                          <Feather name="more-vertical" size={16} color={colors.mutedForeground} />
+                        </Pressable>
+                      </View>
+                      {activeMenu === line.id && (
+                        <LineActionBar
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
+                          onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
                         />
-                      </View>
+                      )}
 
                       {/* ── Chord Picker Panel ── */}
                       {pickerOpen && (
@@ -732,14 +742,23 @@ export function StructuredEditor({ content, onChange }: Props) {
                             }}
                           />
                         </View>
-                        <LineActions
-                          onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
-                          onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
-                          onDuplicate={() => duplicateLine(section.id, line.id)}
-                          onDelete={() => deleteLine(section.id, line.id)}
+                        <Pressable
+                          onPress={() => setActiveMenu(activeMenu === line.id ? null : line.id)}
+                          hitSlop={10}
+                          style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 0.65 })}
+                        >
+                          <Feather name="more-vertical" size={16} color={colors.mutedForeground} />
+                        </Pressable>
+                      </View>
+                      {activeMenu === line.id && (
+                        <LineActionBar
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
+                          onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
                         />
-                      </View>
+                      )}
                       {lyricFocused && songChordNames.length > 0 && (
                         <ChordProPalette
                           chordNames={songChordNames}
@@ -754,66 +773,77 @@ export function StructuredEditor({ content, onChange }: Props) {
                 // ── Strum line ──
                 if (line.type === "strum") {
                   return (
-                    <View key={line.id} style={styles.lineRow}>
-                      <View style={styles.strumRow}>
-                        {line.beats.map((beat, bi) => (
-                          <React.Fragment key={bi}>
-                            {bi === 4 && (
-                              <View style={[styles.strumBarDiv, { backgroundColor: colors.border }]} />
-                            )}
-                            <Pressable
-                              onPress={() => updateBeat(section.id, line.id, bi, cycleBeat(beat))}
-                              style={({ pressed }) => [
-                                styles.strumBeat,
-                                {
-                                  backgroundColor:
-                                    beat === "-" ? "transparent"
-                                    : beat === "x" ? `${colors.destructive}22`
-                                    : beat === "C" ? `${colors.accent}22`
-                                    : `${colors.primary}22`,
-                                  borderColor:
-                                    beat === "-" ? colors.border
-                                    : beat === "x" ? colors.destructive
-                                    : beat === "C" ? colors.accent
-                                    : colors.primary,
-                                  opacity: pressed ? 0.6 : 1,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.strumBeatText,
+                    <View key={line.id}>
+                      <View style={styles.lineRow}>
+                        <View style={styles.strumRow}>
+                          {line.beats.map((beat, bi) => (
+                            <React.Fragment key={bi}>
+                              {bi === 4 && (
+                                <View style={[styles.strumBarDiv, { backgroundColor: colors.border }]} />
+                              )}
+                              <Pressable
+                                onPress={() => updateBeat(section.id, line.id, bi, cycleBeat(beat))}
+                                style={({ pressed }) => [
+                                  styles.strumBeat,
                                   {
-                                    color:
-                                      beat === "-" ? colors.mutedForeground
+                                    backgroundColor:
+                                      beat === "-" ? "transparent"
+                                      : beat === "x" ? `${colors.destructive}22`
+                                      : beat === "C" ? `${colors.accent}22`
+                                      : `${colors.primary}22`,
+                                    borderColor:
+                                      beat === "-" ? colors.border
                                       : beat === "x" ? colors.destructive
                                       : beat === "C" ? colors.accent
                                       : colors.primary,
-                                    opacity: beat === "-" ? 0.35 : 1,
+                                    opacity: pressed ? 0.6 : 1,
                                   },
                                 ]}
                               >
-                                {BEAT_SYMBOL[beat]}
-                              </Text>
-                            </Pressable>
-                          </React.Fragment>
-                        ))}
+                                <Text
+                                  style={[
+                                    styles.strumBeatText,
+                                    {
+                                      color:
+                                        beat === "-" ? colors.mutedForeground
+                                        : beat === "x" ? colors.destructive
+                                        : beat === "C" ? colors.accent
+                                        : colors.primary,
+                                      opacity: beat === "-" ? 0.35 : 1,
+                                    },
+                                  ]}
+                                >
+                                  {BEAT_SYMBOL[beat]}
+                                </Text>
+                              </Pressable>
+                            </React.Fragment>
+                          ))}
+                        </View>
+                        <Pressable
+                          onPress={() => cycleRepeat(section.id, line.id)}
+                          style={[styles.repeatBadge, { borderColor: line.repeat > 1 ? colors.primary : colors.border }]}
+                        >
+                          <Text style={[styles.repeatBadgeText, { color: line.repeat > 1 ? colors.primary : colors.mutedForeground }]}>
+                            ×{line.repeat}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setActiveMenu(activeMenu === line.id ? null : line.id)}
+                          hitSlop={10}
+                          style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 0.65 })}
+                        >
+                          <Feather name="more-vertical" size={16} color={colors.mutedForeground} />
+                        </Pressable>
                       </View>
-                      <Pressable
-                        onPress={() => cycleRepeat(section.id, line.id)}
-                        style={[styles.repeatBadge, { borderColor: line.repeat > 1 ? colors.primary : colors.border }]}
-                      >
-                        <Text style={[styles.repeatBadgeText, { color: line.repeat > 1 ? colors.primary : colors.mutedForeground }]}>
-                          ×{line.repeat}
-                        </Text>
-                      </Pressable>
-                      <LineActions
-                        onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
-                        onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
-                        onDuplicate={() => duplicateLine(section.id, line.id)}
-                        onDelete={() => deleteLine(section.id, line.id)}
-                        colors={colors}
-                      />
+                      {activeMenu === line.id && (
+                        <LineActionBar
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
+                          onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
+                          colors={colors}
+                        />
+                      )}
                     </View>
                   );
                 }
@@ -837,14 +867,23 @@ export function StructuredEditor({ content, onChange }: Props) {
                           onRemoveSlot={() => changeRiffSlots(section.id, line.id, -1)}
                           colors={colors}
                         />
-                        <LineActions
-                          onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
-                          onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
-                          onDuplicate={() => duplicateLine(section.id, line.id)}
-                          onDelete={() => deleteLine(section.id, line.id)}
+                        <Pressable
+                          onPress={() => setActiveMenu(activeMenu === line.id ? null : line.id)}
+                          hitSlop={10}
+                          style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 0.65 })}
+                        >
+                          <Feather name="more-vertical" size={16} color={colors.mutedForeground} />
+                        </Pressable>
+                      </View>
+                      {activeMenu === line.id && (
+                        <LineActionBar
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
+                          onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
                         />
-                      </View>
+                      )}
                     </View>
                   );
                 }
@@ -852,24 +891,35 @@ export function StructuredEditor({ content, onChange }: Props) {
                 // ── Note line ──
                 if (line.type === "note") {
                   return (
-                    <View key={line.id} style={[styles.lineRow, styles.noteLineRow]}>
-                      <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginTop: 5 }} />
-                      <TextInput
-                        style={[styles.noteInput, { color: colors.mutedForeground }]}
-                        value={line.text}
-                        onChangeText={(v) => updateText(section.id, line.id, v)}
-                        placeholder="capo 2, palm mute, swing feel…"
-                        placeholderTextColor={`${colors.mutedForeground}66`}
-                        multiline
-                        blurOnSubmit={false}
-                      />
-                      <LineActions
-                        onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
-                        onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
-                        onDuplicate={() => duplicateLine(section.id, line.id)}
-                        onDelete={() => deleteLine(section.id, line.id)}
-                        colors={colors}
-                      />
+                    <View key={line.id}>
+                      <View style={[styles.lineRow, styles.noteLineRow]}>
+                        <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginTop: 5 }} />
+                        <TextInput
+                          style={[styles.noteInput, { color: colors.mutedForeground }]}
+                          value={line.text}
+                          onChangeText={(v) => updateText(section.id, line.id, v)}
+                          placeholder="capo 2, palm mute, swing feel…"
+                          placeholderTextColor={`${colors.mutedForeground}66`}
+                          multiline
+                          blurOnSubmit={false}
+                        />
+                        <Pressable
+                          onPress={() => setActiveMenu(activeMenu === line.id ? null : line.id)}
+                          hitSlop={10}
+                          style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 0.65 })}
+                        >
+                          <Feather name="more-vertical" size={16} color={colors.mutedForeground} />
+                        </Pressable>
+                      </View>
+                      {activeMenu === line.id && (
+                        <LineActionBar
+                          onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); setActiveMenu(null); }}
+                          onMoveDown={isLastLine ? undefined : () => { moveLine(section.id, line.id, 1); setActiveMenu(null); }}
+                          onDuplicate={() => { duplicateLine(section.id, line.id); setActiveMenu(null); }}
+                          onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
+                          colors={colors}
+                        />
+                      )}
                     </View>
                   );
                 }
@@ -1387,10 +1437,10 @@ function RiffEditorGrid({
                         >
                           {hasFret ? val!.toString() : "·"}
                         </Text>
+                        {hasFret && art ? (
+                          <Text style={[riffStyles.artBadge, { color: colors.accent }]}>{art}</Text>
+                        ) : null}
                       </Pressable>
-                      {hasFret && art ? (
-                        <Text style={[riffStyles.artChar, { color: colors.accent }]}>{art}</Text>
-                      ) : null}
                     </React.Fragment>
                   );
                 })}
@@ -1500,7 +1550,7 @@ const riffStyles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   cellText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  artChar: { fontSize: 10, fontFamily: "Inter_600SemiBold", lineHeight: 24, marginHorizontal: -1 },
+  artBadge: { position: "absolute", right: 2, bottom: 1, fontSize: 8, fontFamily: "Inter_700Bold" },
   picker: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, paddingTop: 2, paddingLeft: 18 },
   artPickerLabel: { fontSize: 9, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" },
   fretBtn: {
@@ -1523,7 +1573,7 @@ interface ColorsLike {
   card: string; accent: string;
 }
 
-function LineActions({
+function LineActionBar({
   onMoveUp, onMoveDown, onDuplicate, onDelete, colors,
 }: {
   onMoveUp?: () => void;
@@ -1533,44 +1583,70 @@ function LineActions({
   colors: ColorsLike;
 }) {
   return (
-    <View style={lineActStyles.wrap}>
+    <View style={[lineBarStyles.bar, { borderTopColor: colors.border }]}>
       <Pressable
         onPress={onMoveUp}
         disabled={!onMoveUp}
-        hitSlop={6}
-        style={({ pressed }) => [lineActStyles.btn, { opacity: onMoveUp ? (pressed ? 0.4 : 0.55) : 0.18 }]}
+        style={({ pressed }) => [lineBarStyles.action, { opacity: onMoveUp ? (pressed ? 0.6 : 1) : 0.28 }]}
       >
-        <Feather name="chevron-up" size={13} color={colors.mutedForeground} />
+        <Feather name="chevron-up" size={17} color={onMoveUp ? colors.foreground : colors.mutedForeground} />
+        <Text style={[lineBarStyles.label, { color: onMoveUp ? colors.foreground : colors.mutedForeground }]}>Up</Text>
       </Pressable>
       <Pressable
         onPress={onMoveDown}
         disabled={!onMoveDown}
-        hitSlop={6}
-        style={({ pressed }) => [lineActStyles.btn, { opacity: onMoveDown ? (pressed ? 0.4 : 0.55) : 0.18 }]}
+        style={({ pressed }) => [lineBarStyles.action, { opacity: onMoveDown ? (pressed ? 0.6 : 1) : 0.28 }]}
       >
-        <Feather name="chevron-down" size={13} color={colors.mutedForeground} />
+        <Feather name="chevron-down" size={17} color={onMoveDown ? colors.foreground : colors.mutedForeground} />
+        <Text style={[lineBarStyles.label, { color: onMoveDown ? colors.foreground : colors.mutedForeground }]}>Down</Text>
       </Pressable>
+      <View style={[lineBarStyles.sep, { backgroundColor: colors.border }]} />
       <Pressable
         onPress={onDuplicate}
-        hitSlop={6}
-        style={({ pressed }) => [lineActStyles.btn, { opacity: pressed ? 0.4 : 0.55 }]}
+        style={({ pressed }) => [lineBarStyles.action, { opacity: pressed ? 0.6 : 1 }]}
       >
-        <Feather name="copy" size={13} color={colors.mutedForeground} />
+        <Feather name="copy" size={17} color={colors.primary} />
+        <Text style={[lineBarStyles.label, { color: colors.primary }]}>Duplicate</Text>
       </Pressable>
+      <View style={[lineBarStyles.sep, { backgroundColor: colors.border }]} />
       <Pressable
         onPress={onDelete}
-        hitSlop={6}
-        style={({ pressed }) => [lineActStyles.btn, { opacity: pressed ? 0.3 : 0.5 }]}
+        style={({ pressed }) => [lineBarStyles.action, { opacity: pressed ? 0.6 : 1 }]}
       >
-        <Feather name="x" size={14} color={colors.mutedForeground} />
+        <Feather name="trash-2" size={17} color={colors.destructive} />
+        <Text style={[lineBarStyles.label, { color: colors.destructive }]}>Delete</Text>
       </Pressable>
     </View>
   );
 }
 
-const lineActStyles = StyleSheet.create({
-  wrap: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", paddingTop: 2, paddingLeft: 2 },
-  btn: { padding: 3 },
+const lineBarStyles = StyleSheet.create({
+  bar: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderTopWidth: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  action: {
+    flex: 1,
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    paddingVertical: 9,
+    paddingHorizontal: 4,
+  },
+  label: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.2,
+  },
+  sep: {
+    width: 1,
+    height: 26,
+    opacity: 0.4,
+  },
 });
 
 function ChordChip({ chord, active, onPress, onLongPress, colors }: {
