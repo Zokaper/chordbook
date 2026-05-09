@@ -48,7 +48,7 @@ const SLIDES: Slide[] = [
     bullets: [
       { icon: "align-left", text: "Chords — tap to insert from your chord library" },
       { icon: "type", text: "Lyrics — freeform text below the chords" },
-      { icon: "activity", text: "Strum — 8-beat D/U tap grid" },
+      { icon: "activity", text: "Strum — tap beats for D/U rhythm, expand for chord options" },
       { icon: "grid", text: "Riff — 6-string fret grid with articulations" },
       { icon: "message-square", text: "Note — italic annotation or reminder" },
     ],

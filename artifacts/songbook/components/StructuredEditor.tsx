@@ -22,6 +22,7 @@ import {
   View,
 } from "react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useChords } from "@/context/ChordContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -282,6 +283,8 @@ export function StructuredEditor({ content, onChange }: Props) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [strumChordPicker, setStrumChordPicker] = useState<{ lineId: string; beatIdx: number } | null>(null);
   const [strumCyclePicker, setStrumCyclePicker] = useState<string | null>(null);
+  const [strumHintDismissed, setStrumHintDismissed] = useState(true);
+  const [chordOptionsExpanded, setChordOptionsExpanded] = useState<Record<string, boolean>>({});
 
   const isFirstRender = useRef(true);
   // Lyric chord-palette state
@@ -293,6 +296,12 @@ export function StructuredEditor({ content, onChange }: Props) {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     onChange(serializeContent(sections));
   }, [sections]);
+
+  useEffect(() => {
+    AsyncStorage.getItem("songbook_strum_hint_v1").then((val) => {
+      if (val !== "1") setStrumHintDismissed(false);
+    }).catch(() => {});
+  }, []);
 
   // ── Section mutations ──────────────────────────────────────────────────────
   const addSection = (name: string) => {
@@ -581,6 +590,15 @@ export function StructuredEditor({ content, onChange }: Props) {
     );
   };
 
+  const dismissStrumHint = () => {
+    setStrumHintDismissed(true);
+    AsyncStorage.setItem("songbook_strum_hint_v1", "1").catch(() => {});
+  };
+
+  const toggleChordOptions = (lineId: string, currentExpanded: boolean) => {
+    setChordOptionsExpanded((prev) => ({ ...prev, [lineId]: !currentExpanded }));
+  };
+
   const removeChordAtIdx = (sectionId: string, lineId: string, idx: number) => {
     if (chordPicker?.lineId === lineId) setChordPicker(null);
     setSections((prev) =>
@@ -864,6 +882,11 @@ export function StructuredEditor({ content, onChange }: Props) {
                 if (line.type === "strum") {
                   const scPickerOpen =
                     strumChordPicker?.lineId === line.id;
+                  const hasChordData = !!(
+                    (line.chordChanges && Object.keys(line.chordChanges).length > 0) ||
+                    (line.repeatChords && line.repeatChords.length > 0)
+                  );
+                  const chordExpanded = chordOptionsExpanded[line.id] ?? hasChordData;
                   return (
                     <View key={line.id}>
                       <View style={styles.lineRow}>
@@ -876,6 +899,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                         >
                           <View>
                             {/* ── Chord-change label row ── */}
+                            {chordExpanded && (
                             <View style={styles.strumChordRow}>
                               {line.beats.map((_, bi) => {
                                 const chord = line.chordChanges?.[bi];
@@ -932,6 +956,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                                 );
                               })}
                             </View>
+                            )}
 
                             {/* ── Beat row ── */}
                             <View style={styles.strumScrollContent}>
@@ -986,6 +1011,24 @@ export function StructuredEditor({ content, onChange }: Props) {
                           </Text>
                         </Pressable>
                         <Pressable
+                          onPress={() => toggleChordOptions(line.id, chordExpanded)}
+                          hitSlop={10}
+                          style={({ pressed }) => [
+                            styles.strumExpandToggle,
+                            {
+                              backgroundColor: chordExpanded ? `${colors.primary}14` : "transparent",
+                              borderColor: chordExpanded ? `${colors.primary}40` : colors.border,
+                              opacity: pressed ? 0.5 : 1,
+                            },
+                          ]}
+                        >
+                          <Feather
+                            name={chordExpanded ? "chevron-up" : "chevron-down"}
+                            size={13}
+                            color={chordExpanded ? colors.primary : colors.mutedForeground}
+                          />
+                        </Pressable>
+                        <Pressable
                           onPress={() => { setStrumChordPicker(null); setStrumCyclePicker(null); setActiveMenu(activeMenu === line.id ? null : line.id); }}
                           hitSlop={10}
                           style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 0.65 })}
@@ -1013,7 +1056,8 @@ export function StructuredEditor({ content, onChange }: Props) {
                           <Text style={[styles.strumBeatBtnText, { color: colors.mutedForeground }]}>beat</Text>
                         </Pressable>
                       </View>
-                      {/* ── Repeat chord-cycle row ── */}
+                      {/* ── Repeat chord-cycle row + picker (only when expanded) ── */}
+                      {chordExpanded && (
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
@@ -1052,8 +1096,9 @@ export function StructuredEditor({ content, onChange }: Props) {
                           <Text style={[styles.strumCycleBtnText, { color: colors.mutedForeground }]}>chord</Text>
                         </Pressable>
                       </ScrollView>
+                      )}
                       {/* ── Cycle chord picker ── */}
-                      {strumCyclePicker === line.id && (
+                      {chordExpanded && strumCyclePicker === line.id && (
                         <View style={[styles.strumChordPickerPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
                           <View style={styles.strumChordPickerHeader}>
                             <Text style={[styles.strumChordPickerLabel, { color: colors.mutedForeground }]}>
@@ -1096,7 +1141,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                         </View>
                       )}
                       {/* ── Inline chord-change picker ── */}
-                      {scPickerOpen && (
+                      {scPickerOpen && chordExpanded && (
                         <View style={[styles.strumChordPickerPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
                           <View style={styles.strumChordPickerHeader}>
                             <Text style={[styles.strumChordPickerLabel, { color: colors.mutedForeground }]}>
@@ -1158,6 +1203,17 @@ export function StructuredEditor({ content, onChange }: Props) {
                           onDelete={() => { deleteLine(section.id, line.id); setActiveMenu(null); }}
                           colors={colors}
                         />
+                      )}
+                      {!strumHintDismissed && (
+                        <Pressable
+                          onPress={dismissStrumHint}
+                          style={[styles.strumHintBanner, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }]}
+                        >
+                          <Feather name="info" size={12} color={colors.primary} style={{ marginTop: 1 }} />
+                          <Text style={[styles.strumHintText, { color: colors.primary }]}>
+                            Tap beats to set rhythm · tap ⌄ to show chord options · tap here to dismiss
+                          </Text>
+                        </Pressable>
                       )}
                     </View>
                   );
@@ -2043,6 +2099,16 @@ const styles = StyleSheet.create({
 
   repeatBadge: { borderRadius: 7, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 4, marginLeft: 2 },
   repeatBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
+
+  strumExpandToggle: {
+    width: 26, height: 26, borderRadius: 7, borderWidth: 1,
+    alignItems: "center", justifyContent: "center", marginLeft: 1,
+  },
+  strumHintBanner: {
+    flexDirection: "row", alignItems: "flex-start", gap: 7,
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4,
+  },
+  strumHintText: { flex: 1, fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16 },
 
   noteLineRow: { alignItems: "flex-start", gap: 6 },
   noteInput: {

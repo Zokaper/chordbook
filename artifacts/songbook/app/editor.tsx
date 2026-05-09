@@ -16,6 +16,7 @@ import {
 
 
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { EditorHelpSheet } from "@/components/EditorHelpSheet";
 import { StructuredEditor } from "@/components/StructuredEditor";
 import { TagsField } from "@/components/TagsField";
 import { useSongs } from "@/context/SongContext";
@@ -44,6 +45,7 @@ export default function EditorScreen() {
   const [content, setContent] = useState(existingSong?.content ?? "");
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const topPadding = useTopPadding();
   const bottomPadding = useBottomPadding(60);
@@ -119,6 +121,15 @@ export default function EditorScreen() {
           </Text>
 
           <View style={styles.headerRight}>
+            <Pressable
+              onPress={() => setShowHelp(true)}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                { backgroundColor: colors.secondary, opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Feather name="help-circle" size={18} color={colors.mutedForeground} />
+            </Pressable>
             {isEdit && (
               <Pressable
                 onPress={handleDelete}
@@ -342,6 +353,8 @@ export default function EditorScreen() {
         {/* Structured song editor */}
         <StructuredEditor content={content} onChange={setContent} />
       </ScrollView>
+
+      {showHelp && <EditorHelpSheet onClose={() => setShowHelp(false)} />}
 
       <ConfirmModal
         visible={showDeleteConfirm}
