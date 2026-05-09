@@ -60,6 +60,7 @@ const VALID_BEATS: string[] = ["D", "U", "DU", "x", "-", "C"];
 interface StrumData {
   beats: StrumBeat[];
   repeat: number;
+  chordChanges: Record<number, string>;
 }
 
 function parseStrumData(raw: string): StrumData {
@@ -70,7 +71,18 @@ function parseStrumData(raw: string): StrumData {
     .map((b) => (VALID_BEATS.includes(b) ? (b as StrumBeat) : "-")) as StrumBeat[];
   const repeatStr = rest.find((p) => p.startsWith("REPEAT:"));
   const repeat = repeatStr ? Math.max(1, parseInt(repeatStr.slice(7), 10)) : 1;
-  return { beats, repeat };
+  const chordChanges: Record<number, string> = {};
+  const chordsSegment = rest.find((p) => p.startsWith("CHORDS:"));
+  if (chordsSegment) {
+    chordsSegment.slice(7).split(",").forEach((cc) => {
+      const ai = cc.lastIndexOf("@");
+      if (ai < 0) return;
+      const name = cc.slice(0, ai);
+      const beatIdx = parseInt(cc.slice(ai + 1), 10);
+      if (!isNaN(beatIdx) && beatIdx >= 0 && name) chordChanges[beatIdx] = name;
+    });
+  }
+  return { beats, repeat, chordChanges };
 }
 
 // ─── Riff helpers ─────────────────────────────────────────────────────────────
@@ -276,50 +288,76 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
 
           // ── Strum ─────────────────────────────────────────────────────────
           if (item.type === "strum") {
-            const { beats, repeat } = parseStrumData((item as ParsedLine).text.trim());
+            const { beats, repeat, chordChanges } = parseStrumData((item as ParsedLine).text.trim());
             const pairedChords = (item as ParsedLine).pairedChords;
+            const hasChordChanges = Object.keys(chordChanges).length > 0;
+
+            const renderChordChangeRow = () => (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.strumChangeRow}>
+                  {beats.map((_, bi) => {
+                    const chord = chordChanges[bi];
+                    return (
+                      <React.Fragment key={bi}>
+                        {bi > 0 && bi % 4 === 0 && (
+                          <View style={styles.strumChangeSep} />
+                        )}
+                        <View style={styles.strumChangeSlot}>
+                          {chord ? (
+                            <View style={[styles.strumChangeChip, { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}55` }]}>
+                              <Text style={[styles.strumChangeChipText, { color: colors.primary }]} numberOfLines={1}>{chord}</Text>
+                            </View>
+                          ) : (
+                            <Text style={[styles.strumChangeDot, { color: `${colors.primary}20` }]}>·</Text>
+                          )}
+                        </View>
+                      </React.Fragment>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            );
 
             const renderBeats = () => (
-              <View style={styles.beatsRow}>
-                {beats.map((beat, bi) => (
-                  <React.Fragment key={bi}>
-                    {bi === 4 && (
-                      <View style={[styles.barSep, { backgroundColor: colors.border }]} />
-                    )}
-                    <View
-                      style={[
-                        styles.beatCell,
-                        {
-                          backgroundColor:
-                            beat === "C" ? `${colors.accent}22` :
-                            beat === "-" ? "transparent" :
-                            `${colors.primary}10`,
-                          borderColor:
-                            beat === "C" ? `${colors.accent}55` :
-                            beat === "-" ? `${colors.border}40` :
-                            `${colors.primary}28`,
-                        },
-                      ]}
-                    >
-                      <Text
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.beatsRow}>
+                  {beats.map((beat, bi) => (
+                    <React.Fragment key={bi}>
+                      {bi > 0 && bi % 4 === 0 && (
+                        <View style={[styles.barSep, { backgroundColor: colors.border }]} />
+                      )}
+                      <View
                         style={[
-                          styles.beatSym,
+                          styles.beatCell,
                           {
-                            color:
-                              beat === "C" ? colors.accent :
-                              beat === "-" ? colors.mutedForeground :
-                              beat === "x" ? colors.destructive :
-                              colors.primary,
-                            opacity: beat === "-" ? 0.35 : 1,
+                            backgroundColor:
+                              beat === "-" ? "transparent" : `${colors.primary}10`,
+                            borderColor:
+                              beat === "-" ? `${colors.border}40` :
+                              beat === "x" ? `${colors.destructive}55` :
+                              `${colors.primary}28`,
                           },
                         ]}
                       >
-                        {BEAT_SYMBOL[beat]}
-                      </Text>
-                    </View>
-                  </React.Fragment>
-                ))}
-              </View>
+                        <Text
+                          style={[
+                            styles.beatSym,
+                            {
+                              color:
+                                beat === "-" ? colors.mutedForeground :
+                                beat === "x" ? colors.destructive :
+                                colors.primary,
+                              opacity: beat === "-" ? 0.35 : 1,
+                            },
+                          ]}
+                        >
+                          {BEAT_SYMBOL[beat]}
+                        </Text>
+                      </View>
+                    </React.Fragment>
+                  ))}
+                </View>
+              </ScrollView>
             );
 
             if (pairedChords && pairedChords.length > 0) {
@@ -341,6 +379,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                       );
                     })}
                   </View>
+                  {hasChordChanges && renderChordChangeRow()}
                   {renderBeats()}
                   {repeat > 1 && (
                     <View style={styles.repeatRow}>
@@ -353,7 +392,8 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
 
             return (
               <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}08`, borderColor: `${colors.primary}20` }]}>
-                <Text style={[styles.strumLabel, { color: `${colors.primary}70` }]}>STRUM</Text>
+                {!hasChordChanges && <Text style={[styles.strumLabel, { color: `${colors.primary}70` }]}>STRUM</Text>}
+                {hasChordChanges && renderChordChangeRow()}
                 {renderBeats()}
                 {repeat > 1 && (
                   <View style={styles.repeatRow}>
@@ -533,6 +573,15 @@ const styles = StyleSheet.create({
   },
   beatSym: { fontSize: 14, fontFamily: "Inter_700Bold" },
   barSep: { width: 1, height: 22, marginHorizontal: 2, opacity: 0.25 },
+  strumChangeRow: { flexDirection: "row", alignItems: "center", gap: 4, paddingBottom: 2 },
+  strumChangeSep: { width: 1, height: 20, marginHorizontal: 2, opacity: 0 },
+  strumChangeSlot: { width: 30, height: 20, alignItems: "center", justifyContent: "center" },
+  strumChangeChip: {
+    borderRadius: 5, borderWidth: 1, paddingHorizontal: 3, paddingVertical: 1,
+    alignItems: "center", justifyContent: "center", maxWidth: 30,
+  },
+  strumChangeChipText: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.2 },
+  strumChangeDot: { fontSize: 12, lineHeight: 14, opacity: 0.5 },
   strumLabel: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.5, textTransform: "uppercase" },
   repeatRow: { alignItems: "flex-end" },
   repeatLabel: { fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },

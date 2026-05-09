@@ -30,7 +30,7 @@ export type StrumBeat = "-" | "D" | "U" | "DU" | "x" | "C";
 
 type ChordLine = { id: string; type: "chord"; chords: string[] };
 type LyricLine = { id: string; type: "lyric"; text: string };
-type StrumLine = { id: string; type: "strum"; beats: StrumBeat[]; repeat: number };
+type StrumLine = { id: string; type: "strum"; beats: StrumBeat[]; repeat: number; chordChanges?: Record<number, string> };
 type RiffLine  = { id: string; type: "riff";  grid: (number | string | null)[][]; numSlots: number };
 type NoteLine  = { id: string; type: "note";  text: string };
 
@@ -48,7 +48,7 @@ const CHORD_RE =
 
 const TAB_LINE_RE = /^[eEADGBb]\|/;
 
-const BEAT_CYCLE: StrumBeat[] = ["-", "D", "U", "DU", "x", "C"];
+const BEAT_CYCLE: StrumBeat[] = ["-", "D", "U", "DU", "x"];
 const cycleBeat = (b: StrumBeat): StrumBeat =>
   BEAT_CYCLE[(BEAT_CYCLE.indexOf(b) + 1) % BEAT_CYCLE.length];
 
@@ -150,25 +150,39 @@ export function parseContent(raw: string): Section[] {
 
     if (line.startsWith("STRUM:")) {
       const [beatsPart, ...rest] = line.slice(6).split(";");
-      const beats = beatsPart.split(",").map((b) =>
-        BEAT_CYCLE.includes(b as StrumBeat) ? (b as StrumBeat) : "-"
+      const rawBeats = beatsPart.split(",").map((b) =>
+        BEAT_CYCLE.includes(b as StrumBeat) || b === "C" ? (b as StrumBeat) : "-"
       ) as StrumBeat[];
-      while (beats.length < 8) beats.push("-");
-      // Migrate legacy CHORDS:name@beatIdx format → place C beats at change positions
-      const legacyChordsStr = rest.find((p) => p.startsWith("CHORDS:"));
-      if (legacyChordsStr) {
-        legacyChordsStr.slice(7).split(",").forEach((cc) => {
+      while (rawBeats.length < 8) rawBeats.push("-");
+
+      // Build chordChanges: parse CHORDS: segment + migrate legacy "C" beats
+      const chordChanges: Record<number, string> = {};
+      const chordsSegment = rest.find((p) => p.startsWith("CHORDS:"));
+      if (chordsSegment) {
+        chordsSegment.slice(7).split(",").forEach((cc) => {
           const ai = cc.lastIndexOf("@");
           if (ai < 0) return;
+          const name = cc.slice(0, ai);
           const beatIdx = parseInt(cc.slice(ai + 1), 10);
-          if (!isNaN(beatIdx) && beatIdx >= 0 && beatIdx < beats.length) {
-            beats[beatIdx] = "C";
-          }
+          if (!isNaN(beatIdx) && beatIdx >= 0 && name) chordChanges[beatIdx] = name;
         });
       }
+
+      // Migrate "C" beats → chordChanges entry + replace with "-"
+      const beats = rawBeats.map((b, bi) => {
+        if (b === "C") {
+          if (!chordChanges[bi]) chordChanges[bi] = "?";
+          return "-" as StrumBeat;
+        }
+        return b;
+      });
+
       const repeatStr = rest.find((p) => p.startsWith("REPEAT:"));
       const repeat = repeatStr ? Math.max(1, parseInt(repeatStr.slice(7), 10)) : 1;
-      current.lines.push({ id: genId(), type: "strum", beats, repeat });
+      current.lines.push({
+        id: genId(), type: "strum", beats, repeat,
+        ...(Object.keys(chordChanges).length > 0 ? { chordChanges } : {}),
+      });
     } else if (line.startsWith("CHORD:")) {
       current.lines.push({
         id: genId(),
@@ -217,6 +231,13 @@ export function serializeContent(sections: Section[]): string {
           if (l.type === "strum") {
             let s = `STRUM:${l.beats.join(",")}`;
             if (l.repeat > 1) s += `;REPEAT:${l.repeat}`;
+            if (l.chordChanges && Object.keys(l.chordChanges).length > 0) {
+              const chordsStr = Object.entries(l.chordChanges)
+                .sort(([a], [b]) => Number(a) - Number(b))
+                .map(([idx, name]) => `${name}@${idx}`)
+                .join(",");
+              s += `;CHORDS:${chordsStr}`;
+            }
             return s;
           }
           if (l.type === "note")  return `NOTE:${l.text}`;
@@ -251,6 +272,7 @@ export function StructuredEditor({ content, onChange }: Props) {
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [strumChordPicker, setStrumChordPicker] = useState<{ lineId: string; beatIdx: number } | null>(null);
 
   const isFirstRender = useRef(true);
   // Lyric chord-palette state
@@ -477,7 +499,26 @@ export function StructuredEditor({ content, onChange }: Props) {
           lines: s.lines.map((l) => {
             if (l.id !== lineId || l.type !== "strum") return l;
             if (l.beats.length <= 1) return l;
-            return { ...l, beats: l.beats.slice(0, -1) };
+            const newLen = l.beats.length - 1;
+            const chordChanges = l.chordChanges ? { ...l.chordChanges } : undefined;
+            if (chordChanges) delete chordChanges[newLen];
+            return { ...l, beats: l.beats.slice(0, -1), chordChanges };
+          }),
+        };
+      })
+    );
+
+  const updateChordChange = (sectionId: string, lineId: string, beatIdx: number, chord: string | null) =>
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          lines: s.lines.map((l) => {
+            if (l.id !== lineId || l.type !== "strum") return l;
+            const cc = { ...(l.chordChanges ?? {}) };
+            if (chord === null) { delete cc[beatIdx]; } else { cc[beatIdx] = chord; }
+            return { ...l, chordChanges: Object.keys(cc).length > 0 ? cc : undefined };
           }),
         };
       })
@@ -780,6 +821,8 @@ export function StructuredEditor({ content, onChange }: Props) {
 
                 // ── Strum line ──
                 if (line.type === "strum") {
+                  const scPickerOpen =
+                    strumChordPicker?.lineId === line.id;
                   return (
                     <View key={line.id}>
                       <View style={styles.lineRow}>
@@ -788,50 +831,108 @@ export function StructuredEditor({ content, onChange }: Props) {
                           showsHorizontalScrollIndicator={false}
                           keyboardShouldPersistTaps="always"
                           style={{ flex: 1 }}
-                          contentContainerStyle={styles.strumScrollContent}
                         >
-                          {line.beats.map((beat, bi) => (
-                            <React.Fragment key={bi}>
-                              {bi > 0 && bi % 4 === 0 && (
-                                <View style={[styles.strumBarDiv, { backgroundColor: colors.border }]} />
-                              )}
-                              <Pressable
-                                onPress={() => updateBeat(section.id, line.id, bi, cycleBeat(beat))}
-                                style={({ pressed }) => [
-                                  styles.strumBeat,
-                                  {
-                                    backgroundColor:
-                                      beat === "-" ? "transparent"
-                                      : beat === "x" ? `${colors.destructive}22`
-                                      : beat === "C" ? `${colors.accent}22`
-                                      : `${colors.primary}22`,
-                                    borderColor:
-                                      beat === "-" ? colors.border
-                                      : beat === "x" ? colors.destructive
-                                      : beat === "C" ? colors.accent
-                                      : colors.primary,
-                                    opacity: pressed ? 0.6 : 1,
-                                  },
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.strumBeatText,
-                                    {
-                                      color:
-                                        beat === "-" ? colors.mutedForeground
-                                        : beat === "x" ? colors.destructive
-                                        : beat === "C" ? colors.accent
-                                        : colors.primary,
-                                      opacity: beat === "-" ? 0.35 : 1,
-                                    },
-                                  ]}
-                                >
-                                  {BEAT_SYMBOL[beat]}
-                                </Text>
-                              </Pressable>
-                            </React.Fragment>
-                          ))}
+                          <View>
+                            {/* ── Chord-change label row ── */}
+                            <View style={styles.strumChordRow}>
+                              {line.beats.map((_, bi) => {
+                                const chord = line.chordChanges?.[bi];
+                                const isActive = scPickerOpen && strumChordPicker?.beatIdx === bi;
+                                return (
+                                  <React.Fragment key={bi}>
+                                    {bi > 0 && bi % 4 === 0 && (
+                                      <View style={styles.strumBarDivSpacer} />
+                                    )}
+                                    <Pressable
+                                      onPress={() => {
+                                        if (isActive) {
+                                          setStrumChordPicker(null);
+                                        } else {
+                                          setStrumChordPicker({ lineId: line.id, beatIdx: bi });
+                                        }
+                                      }}
+                                      style={({ pressed }) => [
+                                        styles.strumChordSlot,
+                                        chord
+                                          ? {
+                                              backgroundColor: isActive
+                                                ? colors.primary
+                                                : `${colors.primary}18`,
+                                              borderColor: isActive
+                                                ? colors.primary
+                                                : `${colors.primary}55`,
+                                            }
+                                          : {
+                                              backgroundColor: "transparent",
+                                              borderColor: pressed ? `${colors.primary}40` : "transparent",
+                                            },
+                                        { opacity: pressed ? 0.7 : 1 },
+                                      ]}
+                                    >
+                                      {chord ? (
+                                        <Text
+                                          style={[
+                                            styles.strumChordChipText,
+                                            { color: isActive ? colors.primaryForeground : colors.primary },
+                                          ]}
+                                          numberOfLines={1}
+                                        >
+                                          {chord}
+                                        </Text>
+                                      ) : (
+                                        <Text style={[styles.strumChordDot, { color: `${colors.primary}30` }]}>
+                                          ·
+                                        </Text>
+                                      )}
+                                    </Pressable>
+                                  </React.Fragment>
+                                );
+                              })}
+                            </View>
+
+                            {/* ── Beat row ── */}
+                            <View style={styles.strumScrollContent}>
+                              {line.beats.map((beat, bi) => (
+                                <React.Fragment key={bi}>
+                                  {bi > 0 && bi % 4 === 0 && (
+                                    <View style={[styles.strumBarDiv, { backgroundColor: colors.border }]} />
+                                  )}
+                                  <Pressable
+                                    onPress={() => updateBeat(section.id, line.id, bi, cycleBeat(beat))}
+                                    style={({ pressed }) => [
+                                      styles.strumBeat,
+                                      {
+                                        backgroundColor:
+                                          beat === "-" ? "transparent"
+                                          : beat === "x" ? `${colors.destructive}22`
+                                          : `${colors.primary}22`,
+                                        borderColor:
+                                          beat === "-" ? colors.border
+                                          : beat === "x" ? colors.destructive
+                                          : colors.primary,
+                                        opacity: pressed ? 0.6 : 1,
+                                      },
+                                    ]}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.strumBeatText,
+                                        {
+                                          color:
+                                            beat === "-" ? colors.mutedForeground
+                                            : beat === "x" ? colors.destructive
+                                            : colors.primary,
+                                          opacity: beat === "-" ? 0.35 : 1,
+                                        },
+                                      ]}
+                                    >
+                                      {BEAT_SYMBOL[beat]}
+                                    </Text>
+                                  </Pressable>
+                                </React.Fragment>
+                              ))}
+                            </View>
+                          </View>
                         </ScrollView>
                         <Pressable
                           onPress={() => cycleRepeat(section.id, line.id)}
@@ -869,6 +970,61 @@ export function StructuredEditor({ content, onChange }: Props) {
                           <Text style={[styles.strumBeatBtnText, { color: colors.mutedForeground }]}>beat</Text>
                         </Pressable>
                       </View>
+                      {/* ── Inline chord-change picker ── */}
+                      {scPickerOpen && (
+                        <View style={[styles.strumChordPickerPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                          <View style={styles.strumChordPickerHeader}>
+                            <Text style={[styles.strumChordPickerLabel, { color: colors.mutedForeground }]}>
+                              Chord on beat {strumChordPicker!.beatIdx + 1}
+                            </Text>
+                            {line.chordChanges?.[strumChordPicker!.beatIdx] && (
+                              <Pressable
+                                onPress={() => {
+                                  updateChordChange(section.id, line.id, strumChordPicker!.beatIdx, null);
+                                  setStrumChordPicker(null);
+                                }}
+                                style={({ pressed }) => [styles.strumChordClearBtn, { borderColor: `${colors.destructive}55`, opacity: pressed ? 0.7 : 1 }]}
+                              >
+                                <Feather name="x" size={11} color={colors.destructive} />
+                                <Text style={[styles.strumChordClearText, { color: colors.destructive }]}>Clear</Text>
+                              </Pressable>
+                            )}
+                            <Pressable onPress={() => setStrumChordPicker(null)} hitSlop={8} style={{ marginLeft: "auto" }}>
+                              <Feather name="x" size={14} color={colors.mutedForeground} />
+                            </Pressable>
+                          </View>
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            keyboardShouldPersistTaps="always"
+                            contentContainerStyle={styles.strumChordPickerChips}
+                          >
+                            {(songChordNames.length > 0 ? songChordNames : uniqueChordNames).map((name) => (
+                              <Pressable
+                                key={name}
+                                onPress={() => {
+                                  updateChordChange(section.id, line.id, strumChordPicker!.beatIdx, name);
+                                  setStrumChordPicker(null);
+                                }}
+                                style={({ pressed }) => [
+                                  styles.strumChordPickerChip,
+                                  {
+                                    backgroundColor: pressed ? colors.primary : `${colors.primary}18`,
+                                    borderColor: `${colors.primary}55`,
+                                  },
+                                ]}
+                              >
+                                <Text style={[styles.strumChordPickerChipText, { color: colors.primary }]}>{name}</Text>
+                              </Pressable>
+                            ))}
+                            {songChordNames.length === 0 && uniqueChordNames.length === 0 && (
+                              <Text style={[styles.strumChordPickerEmpty, { color: colors.mutedForeground }]}>
+                                Add chords to your song first
+                              </Text>
+                            )}
+                          </ScrollView>
+                        </View>
+                      )}
                       {activeMenu === line.id && (
                         <LineActionBar
                           onMoveUp={isFirstLine ? undefined : () => { moveLine(section.id, line.id, -1); }}
@@ -1700,7 +1856,35 @@ const styles = StyleSheet.create({
 
   strumRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 4 },
   strumScrollContent: { flexDirection: "row", alignItems: "center", gap: 4 },
+  strumChordRow: { flexDirection: "row", alignItems: "center", gap: 4, paddingBottom: 3 },
+  strumChordSlot: {
+    width: 30, height: 22, borderRadius: 6, borderWidth: 1,
+    alignItems: "center", justifyContent: "center",
+  },
+  strumChordChipText: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.2 },
+  strumChordDot: { fontSize: 14, lineHeight: 16 },
+  strumBarDivSpacer: { width: 5.5, height: 22 },
   strumBarDiv: { width: 1.5, height: 28, borderRadius: 1, marginHorizontal: 2 },
+  strumChordPickerPanel: {
+    borderRadius: 10, borderWidth: 1, padding: 10, gap: 8, marginTop: 2,
+  },
+  strumChordPickerHeader: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+  },
+  strumChordPickerLabel: {
+    fontSize: 11, fontFamily: "Inter_500Medium", flexShrink: 1,
+  },
+  strumChordClearBtn: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    borderRadius: 6, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  strumChordClearText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  strumChordPickerChips: { gap: 6, alignItems: "center" as const, paddingVertical: 2 },
+  strumChordPickerChip: {
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  strumChordPickerChipText: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  strumChordPickerEmpty: { fontSize: 12, fontFamily: "Inter_400Regular", opacity: 0.6, paddingHorizontal: 4 },
   strumBeatControls: {
     flexDirection: "row", alignItems: "center", gap: 8,
     paddingLeft: 2, paddingTop: 2, paddingBottom: 2,
