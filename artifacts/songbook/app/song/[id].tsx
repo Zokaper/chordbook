@@ -76,6 +76,8 @@ export default function SongScreen() {
     song?.chordVariants ?? {}
   );
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [chordsPinned, setChordsPinned] = useState(false);
+  const [warnTooltip, setWarnTooltip] = useState<string | null>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const topPadding = useTopPadding();
@@ -123,6 +125,110 @@ export default function SongScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.replace("/");
   };
+
+  const capoValue = song.capo ?? 0;
+
+  const chordStripEl = chordGroups.length > 0 ? (
+    <View style={[
+      chordsPinned ? styles.pinnedStrip : styles.chordStrip,
+      { borderColor: colors.border, backgroundColor: colors.card },
+    ]}>
+      <View style={styles.chordStripHeader}>
+        <Text style={[styles.chordStripLabel, { color: colors.mutedForeground }]}>
+          Chords used
+          {chordGroups.some((g) => g.variants.length > 1) && (
+            <Text style={{ fontFamily: "Inter_400Regular" }}> · tap to cycle</Text>
+          )}
+        </Text>
+        <Pressable
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setChordsPinned((p) => !p); }}
+          style={({ pressed }) => [
+            styles.pinBtn,
+            {
+              backgroundColor: chordsPinned ? `${colors.primary}18` : colors.secondary,
+              borderColor: chordsPinned ? `${colors.primary}44` : colors.border,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Feather name="anchor" size={13} color={chordsPinned ? colors.primary : colors.mutedForeground} />
+          <Text style={[styles.pinBtnText, { color: chordsPinned ? colors.primary : colors.mutedForeground }]}>
+            {chordsPinned ? "Pinned" : "Pin"}
+          </Text>
+        </Pressable>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chordStripRow}>
+        {chordGroups.map(({ name, variants }) => {
+          const selectedId = selectedVariants[name];
+          const chord = variants.find((v) => v.id === selectedId) ?? variants[0];
+          const variantIdx = variants.findIndex((v) => v.id === chord.id);
+          const hasMultiple = variants.length > 1;
+          const display = settings.capoLabelDisplay;
+          const isStd = CHORD_TOKEN_RE.test(name);
+          const transposed = capoValue > 0 && display !== "none" && isStd
+            ? transposeChord(name, capoValue) : null;
+          const showTransposed = transposed !== null && transposed !== name;
+          const showWarn = capoValue > 0 && display !== "none" && !isStd;
+
+          return (
+            <Pressable
+              key={name}
+              onPress={() => cycleVariant(name, variants)}
+              style={({ pressed }) => [
+                styles.chordStripItem,
+                {
+                  opacity: pressed ? 0.75 : 1,
+                  backgroundColor: hasMultiple ? `${colors.primary}08` : "transparent",
+                  borderRadius: 10,
+                  borderWidth: hasMultiple ? 1 : 0,
+                  borderColor: `${colors.primary}22`,
+                  padding: hasMultiple ? 4 : 0,
+                },
+              ]}
+            >
+              <ChordDiagram
+                chord={chord}
+                width={76}
+                showLabel={display !== "real"}
+                primaryColor={colors.primary}
+                textColor={colors.foreground}
+                gridColor={colors.border}
+              />
+              {showTransposed && (
+                <Text style={[styles.stripTransposed, { color: colors.primary }]}>{transposed}</Text>
+              )}
+              {showWarn && (
+                <Pressable
+                  onPress={() => setWarnTooltip((w) => w === name ? null : name)}
+                  style={[styles.warnBadge, { backgroundColor: `${colors.accent}22`, borderColor: `${colors.accent}50` }]}
+                >
+                  <Feather name="alert-triangle" size={10} color={colors.accent} />
+                </Pressable>
+              )}
+              {hasMultiple && (
+                <View style={styles.variantBadge}>
+                  <Feather name="refresh-cw" size={9} color={colors.primary} />
+                  <Text style={[styles.variantText, { color: colors.primary }]}>
+                    {variantIdx + 1}/{variants.length}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {warnTooltip && (
+        <View style={[styles.warnTooltip, { backgroundColor: `${colors.accent}10`, borderColor: `${colors.accent}28` }]}>
+          <Feather name="alert-triangle" size={12} color={colors.accent} />
+          <Text style={[styles.warnTooltipText, { color: colors.mutedForeground }]}>
+            "{warnTooltip}" is a custom chord name — it can't be transposed automatically.
+          </Text>
+        </View>
+      )}
+    </View>
+  ) : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -206,81 +312,14 @@ export default function SongScreen() {
         </View>
       </View>
 
+      {chordsPinned && chordStripEl}
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: bottomPadding + 40 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Chord diagram strip — grouped by name with variant cycling */}
-        {chordGroups.length > 0 && (
-          <View style={[styles.chordStrip, { borderColor: colors.border, backgroundColor: colors.card }]}>
-            <Text style={[styles.chordStripLabel, { color: colors.mutedForeground }]}>
-              Chords used
-              {chordGroups.some((g) => g.variants.length > 1) && (
-                <Text style={{ fontFamily: "Inter_400Regular" }}> · tap to cycle variations</Text>
-              )}
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chordStripRow}
-            >
-              {chordGroups.map(({ name, variants }) => {
-                const selectedId = selectedVariants[name];
-                const chord = variants.find((v) => v.id === selectedId) ?? variants[0];
-                const variantIdx = variants.findIndex((v) => v.id === chord.id);
-                const hasMultiple = variants.length > 1;
-
-                const capoValue = song.capo ?? 0;
-                const display = settings.capoLabelDisplay;
-                const transposed = capoValue > 0 && display !== "none"
-                  ? transposeChord(name, capoValue)
-                  : null;
-                const showTransposed = transposed !== null && transposed !== name;
-
-                return (
-                  <Pressable
-                    key={name}
-                    onPress={() => cycleVariant(name, variants)}
-                    style={({ pressed }) => [
-                      styles.chordStripItem,
-                      {
-                        opacity: pressed ? 0.75 : 1,
-                        backgroundColor: hasMultiple ? `${colors.primary}08` : "transparent",
-                        borderRadius: 10,
-                        borderWidth: hasMultiple ? 1 : 0,
-                        borderColor: `${colors.primary}22`,
-                        padding: hasMultiple ? 4 : 0,
-                      },
-                    ]}
-                  >
-                    <ChordDiagram
-                      chord={chord}
-                      width={76}
-                      showLabel={display !== "real"}
-                      primaryColor={colors.primary}
-                      textColor={colors.foreground}
-                      gridColor={colors.border}
-                    />
-                    {showTransposed && (
-                      <Text style={[styles.stripTransposed, { color: colors.primary }]}>
-                        {transposed}
-                      </Text>
-                    )}
-                    {hasMultiple && (
-                      <View style={styles.variantBadge}>
-                        <Feather name="refresh-cw" size={9} color={colors.primary} />
-                        <Text style={[styles.variantText, { color: colors.primary }]}>
-                          {variantIdx + 1}/{variants.length}
-                        </Text>
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
+        {!chordsPinned && chordStripEl}
 
         <ChordViewer
           content={song.content}
@@ -326,14 +365,38 @@ const styles = StyleSheet.create({
     borderRadius: 12, borderWidth: 1,
     marginBottom: 20, paddingTop: 12, paddingBottom: 8, overflow: "hidden",
   },
+  pinnedStrip: {
+    borderBottomWidth: 1, borderTopWidth: 0, borderLeftWidth: 0, borderRightWidth: 0,
+    paddingTop: 10, paddingBottom: 6, overflow: "hidden",
+  },
+  chordStripHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, marginBottom: 8,
+  },
   chordStripLabel: {
     fontSize: 11, fontFamily: "Inter_600SemiBold",
     letterSpacing: 0.8, textTransform: "uppercase",
-    paddingHorizontal: 16, marginBottom: 8,
+    flex: 1,
   },
+  pinBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    borderRadius: 16, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  pinBtnText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   chordStripRow: { paddingHorizontal: 12, gap: 8, flexDirection: "row", alignItems: "flex-start" },
   chordStripItem: { alignItems: "center", gap: 4 },
   stripTransposed: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 0.3 },
   variantBadge: { flexDirection: "row", alignItems: "center", gap: 3 },
   variantText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  warnBadge: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    borderRadius: 10, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 3,
+  },
+  warnTooltip: {
+    flexDirection: "row", alignItems: "flex-start", gap: 6,
+    marginHorizontal: 12, marginTop: 8, marginBottom: 4,
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  warnTooltipText: { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1, lineHeight: 17 },
 });

@@ -68,6 +68,7 @@ export default function ChordEditorScreen() {
   const topPadding = useTopPadding();
   const bottomPadding = useBottomPadding();
   const canSave = name.trim().length > 0;
+  const isNonStandard = canSave && !CHORD_TOKEN_RE.test(name.trim());
   const diagramWidth = 220;
 
   // Other variations (same chord name, different id)
@@ -232,7 +233,7 @@ export default function ChordEditorScreen() {
 
         {/* Row 2: name input full-width */}
         <TextInput
-          style={[styles.nameInput, { color: colors.foreground, borderColor: colors.primary }]}
+          style={[styles.nameInput, { color: colors.foreground, borderColor: isNonStandard ? colors.accent : colors.primary }]}
           placeholder="Name (e.g. Am7, G, Fmaj9)"
           placeholderTextColor={colors.mutedForeground}
           value={name}
@@ -242,6 +243,14 @@ export default function ChordEditorScreen() {
           returnKeyType="done"
           autoFocus={!isEdit}
         />
+        {isNonStandard && (
+          <View style={[styles.nonStdWarning, { backgroundColor: `${colors.accent}12`, borderColor: `${colors.accent}35` }]}>
+            <Feather name="alert-triangle" size={13} color={colors.accent} />
+            <Text style={[styles.nonStdWarningText, { color: colors.mutedForeground }]}>
+              Custom name — this chord won't be auto-transposed when a capo is set.
+            </Text>
+          </View>
+        )}
       </View>
 
       <ScrollView
@@ -504,6 +513,11 @@ const styles = StyleSheet.create({
   },
   saveBtn: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, flexShrink: 0 },
   saveBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  nonStdWarning: {
+    flexDirection: "row", alignItems: "flex-start", gap: 7,
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  nonStdWarningText: { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1, lineHeight: 17 },
   body: { alignItems: "center", paddingTop: 24, paddingHorizontal: 16, gap: 16 },
   diagramCard: { borderRadius: 20, borderWidth: 1, padding: 16, alignItems: "center" },
   hint: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 12 },
