@@ -222,7 +222,7 @@ export function serializeContent(sections: Section[]): string {
       const lines = s.lines
         .filter((l) => {
           if (l.type === "chord") return l.chords.length > 0;
-          if (l.type === "strum") return l.beats.some((b) => b !== "-");
+          if (l.type === "strum") return l.beats.some((b) => b !== "-") || (!!l.chordChanges && Object.keys(l.chordChanges).length > 0);
           if (l.type === "riff")  return l.grid.some((row) => row.some((c) => c !== null));
           return l.text.trim() !== "";
         })
@@ -898,7 +898,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                                     <View style={[styles.strumBarDiv, { backgroundColor: colors.border }]} />
                                   )}
                                   <Pressable
-                                    onPress={() => updateBeat(section.id, line.id, bi, cycleBeat(beat))}
+                                    onPress={() => { setStrumChordPicker(null); updateBeat(section.id, line.id, bi, cycleBeat(beat)); }}
                                     style={({ pressed }) => [
                                       styles.strumBeat,
                                       {
@@ -943,7 +943,7 @@ export function StructuredEditor({ content, onChange }: Props) {
                           </Text>
                         </Pressable>
                         <Pressable
-                          onPress={() => setActiveMenu(activeMenu === line.id ? null : line.id)}
+                          onPress={() => { setStrumChordPicker(null); setActiveMenu(activeMenu === line.id ? null : line.id); }}
                           hitSlop={10}
                           style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 0.65 })}
                         >

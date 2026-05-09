@@ -292,70 +292,70 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             const pairedChords = (item as ParsedLine).pairedChords;
             const hasChordChanges = Object.keys(chordChanges).length > 0;
 
-            const renderChordChangeRow = () => (
+            // Single shared horizontal scroll containing chord-change row + beat row
+            const renderStrumGrid = () => (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.strumChangeRow}>
-                  {beats.map((_, bi) => {
-                    const chord = chordChanges[bi];
-                    return (
+                <View>
+                  {hasChordChanges && (
+                    <View style={styles.strumChangeRow}>
+                      {beats.map((_, bi) => {
+                        const chord = chordChanges[bi];
+                        return (
+                          <React.Fragment key={bi}>
+                            {bi > 0 && bi % 4 === 0 && (
+                              <View style={styles.strumChangeSep} />
+                            )}
+                            <View style={styles.strumChangeSlot}>
+                              {chord ? (
+                                <View style={[styles.strumChangeChip, { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}55` }]}>
+                                  <Text style={[styles.strumChangeChipText, { color: colors.primary }]} numberOfLines={1}>{chord}</Text>
+                                </View>
+                              ) : (
+                                <Text style={[styles.strumChangeDot, { color: `${colors.primary}20` }]}>·</Text>
+                              )}
+                            </View>
+                          </React.Fragment>
+                        );
+                      })}
+                    </View>
+                  )}
+                  <View style={styles.beatsRow}>
+                    {beats.map((beat, bi) => (
                       <React.Fragment key={bi}>
                         {bi > 0 && bi % 4 === 0 && (
-                          <View style={styles.strumChangeSep} />
+                          <View style={[styles.barSep, { backgroundColor: colors.border }]} />
                         )}
-                        <View style={styles.strumChangeSlot}>
-                          {chord ? (
-                            <View style={[styles.strumChangeChip, { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}55` }]}>
-                              <Text style={[styles.strumChangeChipText, { color: colors.primary }]} numberOfLines={1}>{chord}</Text>
-                            </View>
-                          ) : (
-                            <Text style={[styles.strumChangeDot, { color: `${colors.primary}20` }]}>·</Text>
-                          )}
-                        </View>
-                      </React.Fragment>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-            );
-
-            const renderBeats = () => (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.beatsRow}>
-                  {beats.map((beat, bi) => (
-                    <React.Fragment key={bi}>
-                      {bi > 0 && bi % 4 === 0 && (
-                        <View style={[styles.barSep, { backgroundColor: colors.border }]} />
-                      )}
-                      <View
-                        style={[
-                          styles.beatCell,
-                          {
-                            backgroundColor:
-                              beat === "-" ? "transparent" : `${colors.primary}10`,
-                            borderColor:
-                              beat === "-" ? `${colors.border}40` :
-                              beat === "x" ? `${colors.destructive}55` :
-                              `${colors.primary}28`,
-                          },
-                        ]}
-                      >
-                        <Text
+                        <View
                           style={[
-                            styles.beatSym,
+                            styles.beatCell,
                             {
-                              color:
-                                beat === "-" ? colors.mutedForeground :
-                                beat === "x" ? colors.destructive :
-                                colors.primary,
-                              opacity: beat === "-" ? 0.35 : 1,
+                              backgroundColor:
+                                beat === "-" ? "transparent" : `${colors.primary}10`,
+                              borderColor:
+                                beat === "-" ? `${colors.border}40` :
+                                beat === "x" ? `${colors.destructive}55` :
+                                `${colors.primary}28`,
                             },
                           ]}
                         >
-                          {BEAT_SYMBOL[beat]}
-                        </Text>
-                      </View>
-                    </React.Fragment>
-                  ))}
+                          <Text
+                            style={[
+                              styles.beatSym,
+                              {
+                                color:
+                                  beat === "-" ? colors.mutedForeground :
+                                  beat === "x" ? colors.destructive :
+                                  colors.primary,
+                                opacity: beat === "-" ? 0.35 : 1,
+                              },
+                            ]}
+                          >
+                            {BEAT_SYMBOL[beat]}
+                          </Text>
+                        </View>
+                      </React.Fragment>
+                    ))}
+                  </View>
                 </View>
               </ScrollView>
             );
@@ -379,8 +379,7 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
                       );
                     })}
                   </View>
-                  {hasChordChanges && renderChordChangeRow()}
-                  {renderBeats()}
+                  {renderStrumGrid()}
                   {repeat > 1 && (
                     <View style={styles.repeatRow}>
                       <Text style={[styles.repeatLabel, { color: `${colors.primary}70` }]}>× {repeat}</Text>
