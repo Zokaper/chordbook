@@ -76,7 +76,7 @@ function parseStrumData(raw: string): StrumData {
 // ─── Riff helpers ─────────────────────────────────────────────────────────────
 const RIFF_STRING_NAMES = ["e", "B", "G", "D", "A", "E"];
 
-interface RiffString { name: string; slots: string }
+interface RiffString { name: string; slots: string; arts: (string | null)[] }
 
 function parseRiffLine(raw: string): RiffString[] {
   const payload = raw.startsWith("RIFF:") ? raw.slice(5) : raw;
@@ -84,7 +84,16 @@ function parseRiffLine(raw: string): RiffString[] {
   const strings = parts.map((part, i) => {
     const name = RIFF_STRING_NAMES[i] ?? "?";
     const inner = part.replace(/^[a-zA-Z]\|/, "").replace(/\|$/, "");
-    return { name, slots: inner };
+    const isComma = inner.includes(",");
+    if (isComma) {
+      const tokens = inner.split(",");
+      const slots = tokens.map((t) => (t === "-" || t === "" ? "-" : t[0] ?? "-")).join("");
+      const arts: (string | null)[] = tokens.map((t) =>
+        t !== "-" && t !== "" && t.length > 1 ? t[1] : null
+      );
+      return { name, slots, arts };
+    }
+    return { name, slots: inner, arts: [...inner].map(() => null) };
   });
   const maxLen = Math.max(...strings.map((s) => s.slots.length), 0);
   return strings.map((s) => ({
@@ -92,6 +101,9 @@ function parseRiffLine(raw: string): RiffString[] {
     slots: s.slots.length < maxLen
       ? s.slots + "-".repeat(maxLen - s.slots.length)
       : s.slots,
+    arts: s.arts.length < maxLen
+      ? [...s.arts, ...Array(maxLen - s.arts.length).fill(null)]
+      : s.arts,
   }));
 }
 
@@ -359,6 +371,8 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
           if (item.type === "riff") {
             const strings = parseRiffLine((item as ParsedLine).text.trim());
             const used = strings.filter((s) => /[^-]/.test(s.slots));
+            const rows = used.length > 0 ? used : strings;
+            const hasArts = rows.some((s) => s.arts.some((a) => a !== null));
             return (
               <View
                 key={idx}
@@ -369,10 +383,29 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
               >
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View>
-                    {(used.length > 0 ? used : strings).map((s, si) => (
+                    {rows.map((s, si) => (
                       <View key={si} style={styles.riffRow}>
                         <Text style={[styles.riffStrName, { color: `${colors.primary}88` }]}>{s.name}</Text>
-                        <Text style={[styles.riffContent, { color: colors.primary }]}>{`|${s.slots}|`}</Text>
+                        {hasArts ? (
+                          <View style={styles.riffInlineRow}>
+                            <Text style={[styles.riffContent, { color: `${colors.primary}66` }]}>|</Text>
+                            {[...s.slots].map((ch, ci) => (
+                              <React.Fragment key={ci}>
+                                <Text style={[styles.riffContent, {
+                                  color: ch === "-" ? `${colors.primary}44` : colors.primary,
+                                }]}>{ch}</Text>
+                                {s.arts[ci] ? (
+                                  <Text style={[styles.riffArtChar, { color: colors.accent }]}>
+                                    {s.arts[ci]}
+                                  </Text>
+                                ) : null}
+                              </React.Fragment>
+                            ))}
+                            <Text style={[styles.riffContent, { color: `${colors.primary}66` }]}>|</Text>
+                          </View>
+                        ) : (
+                          <Text style={[styles.riffContent, { color: colors.primary }]}>{`|${s.slots}|`}</Text>
+                        )}
                       </View>
                     ))}
                   </View>
@@ -537,6 +570,8 @@ const styles = StyleSheet.create({
   riffRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   riffStrName: { width: 10, fontSize: 11, fontFamily: "Inter_600SemiBold", textAlign: "right" },
   riffContent: { fontSize: 13, fontFamily: MONO_FONT, letterSpacing: 0, lineHeight: 20 },
+  riffInlineRow: { flexDirection: "row", alignItems: "center" },
+  riffArtChar: { fontSize: 11, fontFamily: MONO_FONT, letterSpacing: 0, lineHeight: 20 },
 
   // ── Note ───────────────────────────────────────────────────────────────────
   noteRow: { borderLeftWidth: 2.5, paddingLeft: 10, marginVertical: 2 },

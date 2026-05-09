@@ -31,7 +31,7 @@ export type StrumBeat = "-" | "D" | "U" | "DU" | "x" | "C";
 type ChordLine = { id: string; type: "chord"; chords: string[] };
 type LyricLine = { id: string; type: "lyric"; text: string };
 type StrumLine = { id: string; type: "strum"; beats: StrumBeat[]; repeat: number };
-type RiffLine  = { id: string; type: "riff";  grid: (number | null)[][]; numSlots: number };
+type RiffLine  = { id: string; type: "riff";  grid: (number | null)[][]; arts?: (string | null)[][]; numSlots: number };
 type NoteLine  = { id: string; type: "note";  text: string };
 
 type SongLine = ChordLine | LyricLine | StrumLine | RiffLine | NoteLine;
@@ -64,6 +64,10 @@ function makeEmptyGrid(numSlots: number): (number | null)[][] {
   return STRING_NAMES.map(() => Array(numSlots).fill(null));
 }
 
+function makeEmptyArts(numSlots: number): (string | null)[][] {
+  return STRING_NAMES.map(() => Array(numSlots).fill(null));
+}
+
 function isChordLine(line: string) {
   const tokens = line.trim().split(/\s+/).filter(Boolean);
   return tokens.length > 0 && tokens.every((t) => CHORD_RE.test(t));
@@ -72,42 +76,55 @@ function isChordLine(line: string) {
 const REPEAT_CYCLE = [1, 2, 3, 4];
 
 // ─── RIFF serialise / parse ───────────────────────────────────────────────────
-export function serializeRiff(grid: (number | null)[][], numSlots: number): string {
+export function serializeRiff(grid: (number | null)[][], numSlots: number, arts?: (string | null)[][]): string {
+  const hasArts = arts?.some((row) => row.some((a) => a != null));
   return (
     "RIFF:" +
     grid
       .map((slots, i) => {
         const content = slots
           .slice(0, numSlots)
-          .map((s) => (s === null ? "-" : s.toString()))
-          .join("");
+          .map((s, j) => {
+            if (s === null) return "-";
+            const art = arts?.[i]?.[j] ?? null;
+            return art ? `${s}${art}` : `${s}`;
+          })
+          .join(hasArts ? "," : "");
         return `${STRING_NAMES[i]}|${content}|`;
       })
       .join(":")
   );
 }
 
-function parseRiff(raw: string): { grid: (number | null)[][]; numSlots: number } {
+function parseRiff(raw: string): { grid: (number | null)[][]; arts: (string | null)[][]; numSlots: number } {
   const payload = raw.startsWith("RIFF:") ? raw.slice(5) : raw;
   const parts = payload.split(":");
   let numSlots = DEFAULT_SLOTS;
   const grid: (number | null)[][] = STRING_NAMES.map(() => Array(numSlots).fill(null));
+  const arts: (string | null)[][] = STRING_NAMES.map(() => Array(numSlots).fill(null));
 
   parts.slice(0, 6).forEach((part, i) => {
     const inner = part.replace(/^[a-zA-Z]\|/, "").replace(/\|$/, "");
-    const slots = [...inner].map((c) =>
-      c === "-" ? null : /\d/.test(c) ? parseInt(c, 10) : null
-    );
+    const isComma = inner.includes(",");
+    const rawSlots = isComma ? inner.split(",") : [...inner];
+    const slots = rawSlots.map((token) => {
+      if (token === "-" || token === "") return { fret: null, art: null };
+      const fret = /\d/.test(token[0]) ? parseInt(token[0], 10) : null;
+      const art = fret !== null && token.length > 1 ? token[1] : null;
+      return { fret, art };
+    });
     numSlots = Math.max(numSlots, slots.length);
-    grid[i] = slots;
+    grid[i] = slots.map((s) => s.fret);
+    arts[i] = slots.map((s) => s.art);
   });
 
   grid.forEach((str, i) => {
-    while (str.length < numSlots) str.push(null);
+    while (str.length < numSlots) { str.push(null); arts[i].push(null); }
     grid[i] = str.slice(0, numSlots);
+    arts[i] = arts[i].slice(0, numSlots);
   });
 
-  return { grid, numSlots };
+  return { grid, arts, numSlots };
 }
 
 // ─── Parse / Serialize ────────────────────────────────────────────────────────
@@ -158,8 +175,8 @@ export function parseContent(raw: string): Section[] {
     } else if (line.startsWith("NOTE:")) {
       current.lines.push({ id: genId(), type: "note", text: line.slice(5) });
     } else if (line.startsWith("RIFF:")) {
-      const { grid, numSlots } = parseRiff(line);
-      current.lines.push({ id: genId(), type: "riff", grid, numSlots });
+      const { grid, arts, numSlots } = parseRiff(line);
+      current.lines.push({ id: genId(), type: "riff", grid, arts, numSlots });
     } else if (TAB_LINE_RE.test(line.trim())) {
       const inner = line.trim().replace(/^[eEADGBb]\|/, "").replace(/\|$/, "");
       const frets = [...inner].map((c) =>
@@ -200,7 +217,7 @@ export function serializeContent(sections: Section[]): string {
             return s;
           }
           if (l.type === "note")  return `NOTE:${l.text}`;
-          if (l.type === "riff")  return serializeRiff(l.grid, l.numSlots);
+          if (l.type === "riff")  return serializeRiff(l.grid, l.numSlots, l.arts);
           return l.text;
         });
       return [`[${s.name}]`, ...lines].join("\n");
@@ -262,7 +279,7 @@ export function StructuredEditor({ content, onChange }: Props) {
         switch (type) {
           case "chord": newLine = { id: genId(), type: "chord", chords: [] }; break;
           case "strum": newLine = { id: genId(), type: "strum", beats: [...DEFAULT_BEATS], repeat: 1 }; break;
-          case "riff":  newLine = { id: genId(), type: "riff", grid: makeEmptyGrid(DEFAULT_SLOTS), numSlots: DEFAULT_SLOTS }; break;
+          case "riff":  newLine = { id: genId(), type: "riff", grid: makeEmptyGrid(DEFAULT_SLOTS), arts: makeEmptyArts(DEFAULT_SLOTS), numSlots: DEFAULT_SLOTS }; break;
           case "note":  newLine = { id: genId(), type: "note", text: "" }; break;
           default:      newLine = { id: genId(), type: "lyric", text: "" };
         }
@@ -342,11 +359,89 @@ export function StructuredEditor({ content, onChange }: Props) {
               delta === 1
                 ? l.grid.map((row) => [...row, null])
                 : l.grid.map((row) => row.slice(0, -1));
-            return { ...l, grid, numSlots: next };
+            const baseArts = l.arts ?? makeEmptyArts(l.numSlots);
+            const arts =
+              delta === 1
+                ? baseArts.map((row) => [...row, null])
+                : baseArts.map((row) => row.slice(0, -1));
+            return { ...l, grid, arts, numSlots: next };
           }),
         };
       })
     );
+
+  // ── Riff art mutation ──────────────────────────────────────────────────────
+  const updateRiffArt = (sectionId: string, lineId: string, strIdx: number, slotIdx: number, art: string | null) =>
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          lines: s.lines.map((l) => {
+            if (l.id !== lineId || l.type !== "riff") return l;
+            const newArts = l.arts
+              ? l.arts.map((row) => [...row])
+              : makeEmptyArts(l.numSlots);
+            newArts[strIdx][slotIdx] = art;
+            return { ...l, arts: newArts };
+          }),
+        };
+      })
+    );
+
+  // ── Line reorder / duplicate mutations ─────────────────────────────────────
+  const duplicateLine = (sectionId: string, lineId: string) =>
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        const idx = s.lines.findIndex((l) => l.id === lineId);
+        if (idx < 0) return s;
+        const copy: SongLine = { ...s.lines[idx], id: genId() };
+        const newLines = [...s.lines];
+        newLines.splice(idx + 1, 0, copy);
+        return { ...s, lines: newLines };
+      })
+    );
+
+  const moveLine = (sectionId: string, lineId: string, dir: -1 | 1) =>
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        const idx = s.lines.findIndex((l) => l.id === lineId);
+        const newIdx = idx + dir;
+        if (newIdx < 0 || newIdx >= s.lines.length) return s;
+        const newLines = [...s.lines];
+        [newLines[idx], newLines[newIdx]] = [newLines[newIdx], newLines[idx]];
+        return { ...s, lines: newLines };
+      })
+    );
+
+  // ── Section reorder / duplicate mutations ──────────────────────────────────
+  const duplicateSection = (id: string) =>
+    setSections((prev) => {
+      const idx = prev.findIndex((s) => s.id === id);
+      if (idx < 0) return prev;
+      const orig = prev[idx];
+      const copy: Section = {
+        ...orig,
+        id: genId(),
+        name: `${orig.name} (copy)`,
+        lines: orig.lines.map((l) => ({ ...l, id: genId() })),
+      };
+      const next = [...prev];
+      next.splice(idx + 1, 0, copy);
+      return next;
+    });
+
+  const moveSection = (id: string, dir: -1 | 1) =>
+    setSections((prev) => {
+      const idx = prev.findIndex((s) => s.id === id);
+      const newIdx = idx + dir;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return next;
+    });
 
   // ── Chord picker mutations ─────────────────────────────────────────────────
   const openChordPicker = (sectionId: string, lineId: string, replaceIdx: number | null) => {
@@ -472,7 +567,7 @@ export function StructuredEditor({ content, onChange }: Props) {
         </View>
       )}
 
-      {sections.map((section) => {
+      {sections.map((section, sIdx) => {
         const isEditingName = editingSectionId === section.id;
 
         return (
@@ -500,6 +595,29 @@ export function StructuredEditor({ content, onChange }: Props) {
                 </Pressable>
               )}
               <Pressable
+                onPress={() => moveSection(section.id, -1)}
+                disabled={sIdx === 0}
+                hitSlop={8}
+                style={({ pressed }) => ({ opacity: sIdx === 0 ? 0.2 : pressed ? 0.4 : 0.6 })}
+              >
+                <Feather name="chevron-up" size={14} color={colors.mutedForeground} />
+              </Pressable>
+              <Pressable
+                onPress={() => moveSection(section.id, 1)}
+                disabled={sIdx === sections.length - 1}
+                hitSlop={8}
+                style={({ pressed }) => ({ opacity: sIdx === sections.length - 1 ? 0.2 : pressed ? 0.4 : 0.6 })}
+              >
+                <Feather name="chevron-down" size={14} color={colors.mutedForeground} />
+              </Pressable>
+              <Pressable
+                onPress={() => duplicateSection(section.id)}
+                hitSlop={8}
+                style={({ pressed }) => ({ opacity: pressed ? 0.4 : 0.6 })}
+              >
+                <Feather name="copy" size={14} color={colors.mutedForeground} />
+              </Pressable>
+              <Pressable
                 onPress={() => deleteSection(section.id)}
                 hitSlop={8}
                 style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
@@ -516,8 +634,10 @@ export function StructuredEditor({ content, onChange }: Props) {
                 </Text>
               )}
 
-              {section.lines.map((line) => {
+              {section.lines.map((line, lIdx) => {
                 const pickerOpen = chordPicker?.lineId === line.id;
+                const isFirstLine = lIdx === 0;
+                const isLastLine  = lIdx === section.lines.length - 1;
 
                 // ── Chord line ──
                 if (line.type === "chord") {
@@ -548,7 +668,13 @@ export function StructuredEditor({ content, onChange }: Props) {
                             <Feather name="plus" size={13} color={colors.mutedForeground} />
                           </Pressable>
                         </View>
-                        <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
+                        <LineActions
+                          onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
+                          onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
+                          onDuplicate={() => duplicateLine(section.id, line.id)}
+                          onDelete={() => deleteLine(section.id, line.id)}
+                          colors={colors}
+                        />
                       </View>
 
                       {/* ── Chord Picker Panel ── */}
@@ -606,7 +732,13 @@ export function StructuredEditor({ content, onChange }: Props) {
                             }}
                           />
                         </View>
-                        <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
+                        <LineActions
+                          onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
+                          onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
+                          onDuplicate={() => duplicateLine(section.id, line.id)}
+                          onDelete={() => deleteLine(section.id, line.id)}
+                          colors={colors}
+                        />
                       </View>
                       {lyricFocused && songChordNames.length > 0 && (
                         <ChordProPalette
@@ -675,7 +807,13 @@ export function StructuredEditor({ content, onChange }: Props) {
                           ×{line.repeat}
                         </Text>
                       </Pressable>
-                      <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
+                      <LineActions
+                        onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
+                        onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
+                        onDuplicate={() => duplicateLine(section.id, line.id)}
+                        onDelete={() => deleteLine(section.id, line.id)}
+                        colors={colors}
+                      />
                     </View>
                   );
                 }
@@ -687,15 +825,25 @@ export function StructuredEditor({ content, onChange }: Props) {
                       <View style={[styles.lineRow, { alignItems: "flex-start" }]}>
                         <RiffEditorGrid
                           grid={line.grid}
+                          arts={line.arts}
                           numSlots={line.numSlots}
                           onCellChange={(si, sli, val) =>
                             updateRiffCell(section.id, line.id, si, sli, val)
+                          }
+                          onArtChange={(si, sli, art) =>
+                            updateRiffArt(section.id, line.id, si, sli, art)
                           }
                           onAddSlot={() => changeRiffSlots(section.id, line.id, 1)}
                           onRemoveSlot={() => changeRiffSlots(section.id, line.id, -1)}
                           colors={colors}
                         />
-                        <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
+                        <LineActions
+                          onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
+                          onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
+                          onDuplicate={() => duplicateLine(section.id, line.id)}
+                          onDelete={() => deleteLine(section.id, line.id)}
+                          colors={colors}
+                        />
                       </View>
                     </View>
                   );
@@ -715,7 +863,13 @@ export function StructuredEditor({ content, onChange }: Props) {
                         multiline
                         blurOnSubmit={false}
                       />
-                      <LineDeleteBtn onPress={() => deleteLine(section.id, line.id)} colors={colors} />
+                      <LineActions
+                        onMoveUp={isFirstLine ? undefined : () => moveLine(section.id, line.id, -1)}
+                        onMoveDown={isLastLine ? undefined : () => moveLine(section.id, line.id, 1)}
+                        onDuplicate={() => duplicateLine(section.id, line.id)}
+                        onDelete={() => deleteLine(section.id, line.id)}
+                        colors={colors}
+                      />
                     </View>
                   );
                 }
@@ -1111,25 +1265,37 @@ const paletteStyles = StyleSheet.create({
 // ─── RiffEditorGrid ────────────────────────────────────────────────────────────
 interface RiffEditorGridProps {
   grid: (number | null)[][];
+  arts?: (string | null)[][];
   numSlots: number;
   onCellChange: (strIdx: number, slotIdx: number, val: number | null) => void;
+  onArtChange: (strIdx: number, slotIdx: number, art: string | null) => void;
   onAddSlot: () => void;
   onRemoveSlot: () => void;
   colors: ColorsLike;
 }
 
 const FRET_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+const ART_OPTIONS  = ["h", "p", "/", "\\", "b", "~"] as const;
 
 function RiffEditorGrid({
-  grid, numSlots, onCellChange, onAddSlot, onRemoveSlot, colors,
+  grid, arts, numSlots, onCellChange, onArtChange, onAddSlot, onRemoveSlot, colors,
 }: RiffEditorGridProps) {
-  const [selected, setSelected] = useState<[number, number] | null>(null);
+  const [selected,  setSelected]  = useState<[number, number] | null>(null);
+  const [artPicker, setArtPicker] = useState<[number, number] | null>(null);
 
   const handleCellPress = (si: number, sli: number) => {
+    setArtPicker(null);
     if (selected && selected[0] === si && selected[1] === sli) {
       setSelected(null);
     } else {
       setSelected([si, sli]);
+    }
+  };
+
+  const handleCellLongPress = (si: number, sli: number) => {
+    if ((grid[si]?.[sli] ?? null) !== null) {
+      setSelected(null);
+      setArtPicker([si, sli]);
     }
   };
 
@@ -1142,11 +1308,21 @@ function RiffEditorGrid({
   const handleClear = () => {
     if (!selected) return;
     onCellChange(selected[0], selected[1], null);
+    onArtChange(selected[0], selected[1], null);
     setSelected(null);
   };
 
-  const selSi  = selected?.[0] ?? -1;
-  const selSli = selected?.[1] ?? -1;
+  const handleArtPick = (art: string | null) => {
+    if (!artPicker) return;
+    onArtChange(artPicker[0], artPicker[1], art);
+    setArtPicker(null);
+  };
+
+  const selSi  = selected?.[0]  ?? -1;
+  const selSli = selected?.[1]  ?? -1;
+  const artSi  = artPicker?.[0] ?? -1;
+  const artSli = artPicker?.[1] ?? -1;
+  const currentArt = artPicker ? (arts?.[artSi]?.[artSli] ?? null) : null;
 
   return (
     <View style={riffStyles.root}>
@@ -1164,7 +1340,9 @@ function RiffEditorGrid({
               <View style={riffStyles.slots}>
                 {Array.from({ length: numSlots }, (_, sli) => {
                   const val = grid[si]?.[sli] ?? null;
-                  const isSelected = selSi === si && selSli === sli;
+                  const art = arts?.[si]?.[sli] ?? null;
+                  const isSelected   = selSi === si && selSli === sli;
+                  const isArtTarget  = artSi === si && artSli === sli;
                   const hasFret = val !== null;
                   return (
                     <React.Fragment key={sli}>
@@ -1173,20 +1351,25 @@ function RiffEditorGrid({
                       )}
                       <Pressable
                         onPress={() => handleCellPress(si, sli)}
+                        onLongPress={() => handleCellLongPress(si, sli)}
                         style={({ pressed }) => [
                           riffStyles.cell,
                           {
-                            backgroundColor: isSelected
+                            backgroundColor: isArtTarget
+                              ? `${colors.primary}30`
+                              : isSelected
                               ? colors.primary
                               : hasFret
                               ? `${colors.primary}18`
                               : "transparent",
-                            borderColor: isSelected
+                            borderColor: isArtTarget
+                              ? colors.primary
+                              : isSelected
                               ? colors.primary
                               : hasFret
                               ? `${colors.primary}55`
                               : `${colors.border}88`,
-                            opacity: pressed && !isSelected ? 0.7 : 1,
+                            opacity: pressed && !isSelected && !isArtTarget ? 0.7 : 1,
                           },
                         ]}
                       >
@@ -1205,6 +1388,9 @@ function RiffEditorGrid({
                           {hasFret ? val!.toString() : "·"}
                         </Text>
                       </Pressable>
+                      {hasFret && art ? (
+                        <Text style={[riffStyles.artChar, { color: colors.accent }]}>{art}</Text>
+                      ) : null}
                     </React.Fragment>
                   );
                 })}
@@ -1214,7 +1400,8 @@ function RiffEditorGrid({
         </View>
       </ScrollView>
 
-      {selected !== null && (
+      {/* Fret picker */}
+      {selected !== null && artPicker === null && (
         <View style={riffStyles.picker}>
           {FRET_OPTIONS.map((f) => (
             <Pressable
@@ -1230,6 +1417,44 @@ function RiffEditorGrid({
           ))}
           <Pressable
             onPress={handleClear}
+            style={({ pressed }) => [
+              riffStyles.fretBtn,
+              {
+                backgroundColor: pressed ? colors.destructive : `${colors.destructive}15`,
+                borderColor: `${colors.destructive}55`,
+              },
+            ]}
+          >
+            <Feather name="x" size={13} color={colors.destructive} />
+          </Pressable>
+        </View>
+      )}
+
+      {/* Articulation picker */}
+      {artPicker !== null && (
+        <View style={riffStyles.picker}>
+          <Text style={[riffStyles.artPickerLabel, { color: colors.mutedForeground }]}>slide / bend:</Text>
+          {ART_OPTIONS.map((a) => (
+            <Pressable
+              key={a}
+              onPress={() => handleArtPick(a)}
+              style={({ pressed }) => [
+                riffStyles.fretBtn,
+                {
+                  backgroundColor: currentArt === a
+                    ? colors.primary
+                    : pressed ? colors.secondary : `${colors.primary}12`,
+                  borderColor: currentArt === a ? colors.primary : `${colors.primary}40`,
+                },
+              ]}
+            >
+              <Text style={[riffStyles.fretBtnText, {
+                color: currentArt === a ? colors.primaryForeground : colors.primary,
+              }]}>{a}</Text>
+            </Pressable>
+          ))}
+          <Pressable
+            onPress={() => handleArtPick(null)}
             style={({ pressed }) => [
               riffStyles.fretBtn,
               {
@@ -1275,7 +1500,9 @@ const riffStyles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   cellText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  picker: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingTop: 2, paddingLeft: 18 },
+  artChar: { fontSize: 10, fontFamily: "Inter_600SemiBold", lineHeight: 24, marginHorizontal: -1 },
+  picker: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, paddingTop: 2, paddingLeft: 18 },
+  artPickerLabel: { fontSize: 9, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" },
   fretBtn: {
     width: 32, height: 32, borderRadius: 8, borderWidth: 1,
     alignItems: "center", justifyContent: "center",
@@ -1293,25 +1520,58 @@ const riffStyles = StyleSheet.create({
 interface ColorsLike {
   primary: string; primaryForeground: string; secondary: string;
   foreground: string; mutedForeground: string; border: string; destructive: string;
-  card: string;
+  card: string; accent: string;
 }
 
-function LineDeleteBtn({ onPress, colors }: { onPress: () => void; colors: ColorsLike }) {
+function LineActions({
+  onMoveUp, onMoveDown, onDuplicate, onDelete, colors,
+}: {
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  colors: ColorsLike;
+}) {
   return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={10}
-      style={({ pressed }) => ({
-        opacity: pressed ? 0.4 : 0.5,
-        paddingLeft: 4,
-        alignSelf: "flex-start",
-        paddingTop: 4,
-      })}
-    >
-      <Feather name="x" size={14} color={colors.mutedForeground} />
-    </Pressable>
+    <View style={lineActStyles.wrap}>
+      <Pressable
+        onPress={onMoveUp}
+        disabled={!onMoveUp}
+        hitSlop={6}
+        style={({ pressed }) => [lineActStyles.btn, { opacity: onMoveUp ? (pressed ? 0.4 : 0.55) : 0.18 }]}
+      >
+        <Feather name="chevron-up" size={13} color={colors.mutedForeground} />
+      </Pressable>
+      <Pressable
+        onPress={onMoveDown}
+        disabled={!onMoveDown}
+        hitSlop={6}
+        style={({ pressed }) => [lineActStyles.btn, { opacity: onMoveDown ? (pressed ? 0.4 : 0.55) : 0.18 }]}
+      >
+        <Feather name="chevron-down" size={13} color={colors.mutedForeground} />
+      </Pressable>
+      <Pressable
+        onPress={onDuplicate}
+        hitSlop={6}
+        style={({ pressed }) => [lineActStyles.btn, { opacity: pressed ? 0.4 : 0.55 }]}
+      >
+        <Feather name="copy" size={13} color={colors.mutedForeground} />
+      </Pressable>
+      <Pressable
+        onPress={onDelete}
+        hitSlop={6}
+        style={({ pressed }) => [lineActStyles.btn, { opacity: pressed ? 0.3 : 0.5 }]}
+      >
+        <Feather name="x" size={14} color={colors.mutedForeground} />
+      </Pressable>
+    </View>
   );
 }
+
+const lineActStyles = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", paddingTop: 2, paddingLeft: 2 },
+  btn: { padding: 3 },
+});
 
 function ChordChip({ chord, active, onPress, onLongPress, colors }: {
   chord: string; active?: boolean; onPress: () => void; onLongPress: () => void; colors: ColorsLike;
