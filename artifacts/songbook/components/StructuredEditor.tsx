@@ -284,6 +284,7 @@ export function StructuredEditor({ content, onChange }: Props) {
   const [strumChordPicker, setStrumChordPicker] = useState<{ lineId: string; beatIdx: number } | null>(null);
   const [strumCyclePicker, setStrumCyclePicker] = useState<string | null>(null);
   const [strumHintDismissed, setStrumHintDismissed] = useState(true);
+  const [strumHintLineId, setStrumHintLineId] = useState<string | null>(null);
   const [chordOptionsExpanded, setChordOptionsExpanded] = useState<Record<string, boolean>>({});
 
   const isFirstRender = useRef(true);
@@ -316,13 +317,14 @@ export function StructuredEditor({ content, onChange }: Props) {
   // ── Line mutations ─────────────────────────────────────────────────────────
   const addLine = (sectionId: string, type: SongLine["type"]) => {
     setChordPicker(null);
+    const preGenId = genId();
     setSections((prev) =>
       prev.map((s) => {
         if (s.id !== sectionId) return s;
         let newLine: SongLine;
         switch (type) {
           case "chord": newLine = { id: genId(), type: "chord", chords: [] }; break;
-          case "strum": newLine = { id: genId(), type: "strum", beats: [...DEFAULT_BEATS], repeat: 1 }; break;
+          case "strum": newLine = { id: preGenId, type: "strum", beats: [...DEFAULT_BEATS], repeat: 1 }; break;
           case "riff":  newLine = { id: genId(), type: "riff", grid: makeEmptyGrid(DEFAULT_SLOTS), numSlots: DEFAULT_SLOTS }; break;
           case "note":  newLine = { id: genId(), type: "note", text: "" }; break;
           default:      newLine = { id: genId(), type: "lyric", text: "" };
@@ -330,6 +332,9 @@ export function StructuredEditor({ content, onChange }: Props) {
         return { ...s, lines: [...s.lines, newLine] };
       })
     );
+    if (type === "strum" && !strumHintDismissed) {
+      setStrumHintLineId(preGenId);
+    }
     // Auto-open chord picker for new chord lines
     if (type === "chord") {
       // We'll open the picker after state settles; find the new line id via a ref trick
@@ -592,6 +597,7 @@ export function StructuredEditor({ content, onChange }: Props) {
 
   const dismissStrumHint = () => {
     setStrumHintDismissed(true);
+    setStrumHintLineId(null);
     AsyncStorage.setItem("songbook_strum_hint_v1", "1").catch(() => {});
   };
 
@@ -1204,14 +1210,14 @@ export function StructuredEditor({ content, onChange }: Props) {
                           colors={colors}
                         />
                       )}
-                      {!strumHintDismissed && (
+                      {strumHintLineId === line.id && (
                         <Pressable
                           onPress={dismissStrumHint}
                           style={[styles.strumHintBanner, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }]}
                         >
                           <Feather name="info" size={12} color={colors.primary} style={{ marginTop: 1 }} />
                           <Text style={[styles.strumHintText, { color: colors.primary }]}>
-                            Tap beats to set rhythm · tap ⌄ to show chord options · tap here to dismiss
+                            Tap beats for D/U rhythm · tap + chord to cycle chords through repeats · tap ⌄ to expand beat labels · tap to dismiss
                           </Text>
                         </Pressable>
                       )}
