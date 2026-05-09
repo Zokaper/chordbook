@@ -270,63 +270,86 @@ export function ChordViewer({ content, capo = 0, capoMode = "both" }: ChordViewe
             const { beats, repeat } = parseStrumData((item as ParsedLine).text.trim());
             const pairedChords = (item as ParsedLine).pairedChords;
 
-            const beatsRow = (
+            const renderBeats = () => (
               <View style={styles.beatsRow}>
                 {beats.map((beat, bi) => (
-                  <Text
-                    key={bi}
-                    style={[
-                      styles.beatSym,
-                      {
-                        color:
-                          beat === "C" ? colors.accent :
-                          beat === "-" ? colors.border :
-                          beat === "x" ? colors.destructive :
-                          colors.primary,
-                        opacity: beat === "-" ? 0.4 : 1,
-                      },
-                    ]}
-                  >
-                    {BEAT_SYMBOL[beat]}
-                  </Text>
+                  <React.Fragment key={bi}>
+                    {bi === 4 && (
+                      <View style={[styles.barSep, { backgroundColor: colors.border }]} />
+                    )}
+                    <View
+                      style={[
+                        styles.beatCell,
+                        {
+                          backgroundColor:
+                            beat === "C" ? `${colors.accent}22` :
+                            beat === "-" ? "transparent" :
+                            `${colors.primary}10`,
+                          borderColor:
+                            beat === "C" ? `${colors.accent}55` :
+                            beat === "-" ? `${colors.border}40` :
+                            `${colors.primary}28`,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.beatSym,
+                          {
+                            color:
+                              beat === "C" ? colors.accent :
+                              beat === "-" ? colors.mutedForeground :
+                              beat === "x" ? colors.destructive :
+                              colors.primary,
+                            opacity: beat === "-" ? 0.35 : 1,
+                          },
+                        ]}
+                      >
+                        {BEAT_SYMBOL[beat]}
+                      </Text>
+                    </View>
+                  </React.Fragment>
                 ))}
               </View>
             );
 
             if (pairedChords && pairedChords.length > 0) {
               return (
-                <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
+                <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}08`, borderColor: `${colors.primary}20` }]}>
                   <View style={styles.chordNamesRow}>
                     {pairedChords.map((chord, ci) => {
                       const isStd = CHORD_TOKEN_REGEX.test(chord);
                       const transposed = capo > 0 && isStd ? transposeChord(chord, capo) : null;
                       const showLabel = transposed !== null && transposed !== chord;
+                      const display = capoMode === "real" && showLabel ? transposed! : chord;
                       return (
-                        <View key={ci} style={styles.chordNameItem}>
-                          <Text style={[styles.chordGroupName, { color: colors.accent }]}>
-                            {capoMode === "real" && showLabel ? transposed : chord}
-                          </Text>
+                        <View key={ci} style={[styles.chordChip, { backgroundColor: `${colors.accent}14`, borderColor: `${colors.accent}38` }]}>
+                          <Text style={[styles.chordChipText, { color: colors.accent }]}>{display}</Text>
                           {capoMode === "both" && showLabel && (
-                            <Text style={[styles.chordGroupTransposed, { color: colors.primary }]}>{transposed}</Text>
+                            <Text style={[styles.chordChipSub, { color: colors.primary }]}>{transposed}</Text>
                           )}
                         </View>
                       );
                     })}
                   </View>
-                  {beatsRow}
+                  {renderBeats()}
                   {repeat > 1 && (
-                    <Text style={[styles.repeatLabel, { color: `${colors.primary}88` }]}>× {repeat}</Text>
+                    <View style={styles.repeatRow}>
+                      <Text style={[styles.repeatLabel, { color: `${colors.primary}70` }]}>× {repeat}</Text>
+                    </View>
                   )}
                 </View>
               );
             }
 
             return (
-              <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}09`, borderColor: `${colors.primary}22` }]}>
-                <Text style={[styles.strumLabel, { color: `${colors.primary}88` }]}>strum</Text>
-                {beatsRow}
+              <View key={idx} style={[styles.chordStrumBlock, { backgroundColor: `${colors.primary}08`, borderColor: `${colors.primary}20` }]}>
+                <Text style={[styles.strumLabel, { color: `${colors.primary}70` }]}>STRUM</Text>
+                {renderBeats()}
                 {repeat > 1 && (
-                  <Text style={[styles.repeatLabel, { color: `${colors.primary}88` }]}>× {repeat}</Text>
+                  <View style={styles.repeatRow}>
+                    <Text style={[styles.repeatLabel, { color: `${colors.primary}70` }]}>× {repeat}</Text>
+                  </View>
                 )}
               </View>
             );
@@ -462,31 +485,47 @@ const styles = StyleSheet.create({
 
   // ── Chord + Strum block (paired or standalone) ─────────────────────────────
   chordStrumBlock: {
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginVertical: 4,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginVertical: 5,
+    gap: 10,
   },
   chordNamesRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    alignItems: "flex-start",
-    gap: 14,
+    alignItems: "center",
+    gap: 6,
   },
-  chordNameItem: { alignItems: "flex-start" },
-  chordGroupName: { fontSize: 16, fontFamily: "Inter_700Bold", letterSpacing: 0.3 },
-  chordGroupTransposed: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.3, opacity: 0.75 },
+  chordChip: {
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignItems: "center",
+  },
+  chordChipText: { fontSize: 15, fontFamily: "Inter_700Bold", letterSpacing: 0.3 },
+  chordChipSub: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.3, opacity: 0.8, marginTop: 1 },
   beatsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     gap: 4,
   },
-  beatSym: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  strumLabel: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.2, textTransform: "uppercase" },
-  repeatLabel: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 0.3, textAlign: "right" },
+  beatCell: {
+    width: 30,
+    height: 30,
+    borderRadius: 7,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  beatSym: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  barSep: { width: 1, height: 22, marginHorizontal: 2, opacity: 0.25 },
+  strumLabel: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.5, textTransform: "uppercase" },
+  repeatRow: { alignItems: "flex-end" },
+  repeatLabel: { fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
   chordWarnNote: { fontSize: 10, fontFamily: "Inter_400Regular", fontStyle: "italic", marginTop: 2, marginBottom: 2, opacity: 0.7 },
 
   // ── Riff block ─────────────────────────────────────────────────────────────
