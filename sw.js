@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chordbook-v1782394194984';
+const CACHE_NAME = 'chordbook-v1782399645965';
 const CACHED_URLS = [
   "/chordbook/",
   "/chordbook/assets/icon.png",
@@ -61,7 +61,7 @@ const CACHED_URLS = [
   "/chordbook/manifest.json",
   "/chordbook/metadata.json",
   "/chordbook/_expo/static/css/native-tabs.module-81c2ad3cd81da2188aededdb773bc36f.css",
-  "/chordbook/_expo/static/js/web/entry-c885a34b57545298f52297711f430fcf.js"
+  "/chordbook/_expo/static/js/web/entry-d868aca5ec5827e75b8430886c4eccbc.js"
 ];
 
 self.addEventListener('install', event => {
