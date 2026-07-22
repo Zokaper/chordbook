@@ -43,14 +43,14 @@ const SLIDES: Slide[] = [
   },
   {
     icon: "edit-2",
-    title: "Building a Song",
-    subtitle: "Five types of lines per section",
+    title: "Build Your Arrangement",
+    subtitle: "Keep only what helps you play",
     bullets: [
-      { icon: "align-left", text: "Chords — tap to insert from your chord library" },
-      { icon: "type", text: "Lyrics — freeform text below the chords" },
-      { icon: "activity", text: "Strum — tap beats for D/U rhythm, expand for chord options" },
-      { icon: "grid", text: "Riff — 6-string fret grid with articulations" },
-      { icon: "message-square", text: "Note — italic annotation or reminder" },
+      { icon: "music", text: "Type chord progressions with suggestions from your library" },
+      { icon: "type", text: "Add lyrics only when you want them" },
+      { icon: "activity", text: "Capture strumming, fingerstyle riffs, or detailed tab" },
+      { icon: "message-square", text: "Keep notes beside the relevant section" },
+      { icon: "save", text: "Work is saved locally as you build" },
     ],
   },
 ];

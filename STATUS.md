@@ -21,11 +21,14 @@ The product currently runs as an Expo/React Native application targeting web/PWA
 
 ### Song builder
 
-- Metadata: title, artist, key, capo, tempo, and free-form tags
+- Phone-first arrangement editor with title and artist first, plus collapsible key, capo, tempo, and tags
+- Local autosaved drafts with visible save status, library badges, resume-on-tap, and explicit completion
+- A ready first Verse for new arrangements and a single contextual Add block sheet
 - Named, reorderable, duplicable sections
 - Five structured line types: chords, lyrics, strum, riff, and note
+- Directly typed chord progressions with personal-library suggestions and support for custom names
 - Reorder, duplicate, and delete individual lines
-- Chord selection from the personal chord library
+- Contextual section and line action sheets keep arrangement controls off the main canvas
 - ChordPro-style chord placement inside lyrics
 - Contextual chord palette while editing lyrics
 - Editor guide and first-use strumming hint
@@ -88,7 +91,7 @@ The product currently runs as an Expo/React Native application targeting web/PWA
 - Windows-compatible install and package scripts
 - App-level `check` command combining typechecking and tests
 - Node test runner in normal and watch modes
-- Eight passing tests covering chord transposition, slash chords, enharmonic behavior, capo labels, and relative-time formatting
+- Thirteen passing tests covering chord transposition, relative time, structured content round trips, legacy formats, and defensive song migration
 
 ## Architecture status
 
@@ -117,7 +120,7 @@ Any changes to these formats should include migration or backward-compatible par
 
 ## Known limitations and risks
 
-- Automated coverage is currently limited to transposition and relative-time utilities. Structured content parsing, serialization, and migrations remain untested.
+- UI-level autosave and editor interaction flows are still validated manually; pure parsing and migration boundaries now have automated coverage.
 - All user data remains device/browser-local. Users should export backups before clearing application or browser storage.
 - JSON import validation is permissive and malformed files fail without a visible error message.
 - JSON backup/restore and song text export are web-only.
@@ -135,12 +138,12 @@ Any changes to these formats should include migration or backward-compatible par
 These are observations, not committed priorities:
 
 1. Connect the GitHub repository to Cloudflare Pages and attach `chordbook.zokaper.cc` using `DEPLOYMENT.md`.
-2. Add tests for content parse/serialize round trips, migrations, and chord extraction.
+2. Add component-level tests for autosave timing, draft finalization, and editor interaction flows.
 3. Consolidate chord-token parsing into a shared utility used by the library, chord screen, editor, and viewer.
 4. Add visible backup-import errors and stronger runtime validation.
 5. Decide whether the user-facing name should consistently be Chordbook or Songbook.
 6. Consider native backup/share support so local data is recoverable outside the web build.
-7. Break the structured editor into smaller behavior-focused modules without changing the persisted format.
+7. Continue breaking the structured editor into smaller behavior-focused modules without changing the persisted format.
 
 ## Collaboration log
 
@@ -171,6 +174,16 @@ These are observations, not committed priorities:
 - Verified the root-domain production export completes and Workbox emits the service worker.
 - Smoke-tested both the Fast Refresh server and production preview over local HTTP.
 - Confirmed the existing full-workspace typecheck issue is confined to the unused mockup sandbox's duplicate React types.
+
+### 2026-07-22 — V2 phone-first arrangement builder
+
+- Reworked song creation around a title-first, ready-to-edit Verse with optional details collapsed by default.
+- Replaced persistent block and arrangement controls with contextual phone-friendly action sheets.
+- Added directly typed chord progressions with suggestions from the personal chord library while preserving custom chord names.
+- Added local autosaved drafts, draft badges, resume-on-tap behavior, title validation on completion, and save flushing on navigation or backgrounding.
+- Made song persistence writes sequential and defensive, including preservation of unknown imported fields and migration of the new draft flag.
+- Extracted pure structured-content and song-migration utilities and expanded the automated suite from eight to thirteen tests.
+- Verified the app typecheck, all thirteen tests, the live Expo development bundle, and the root-domain production PWA build.
 
 ## How to update this file
 

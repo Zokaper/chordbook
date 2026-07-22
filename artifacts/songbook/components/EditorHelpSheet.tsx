@@ -22,9 +22,9 @@ const HELP_SECTIONS: HelpSection[] = [
     icon: "music",
     title: "Chords",
     bullets: [
-      "Tap + to pick a chord from your library",
-      "Tap an existing chip to replace it",
-      "Long-press a chip to remove it",
+      "Type a progression directly, separated by spaces",
+      "Library suggestions appear while you type",
+      "Any chord name is allowed; matching library chords gain diagrams",
     ],
   },
   {
@@ -49,7 +49,7 @@ const HELP_SECTIONS: HelpSection[] = [
     icon: "chevrons-down",
     title: "Strum: chord options",
     bullets: [
-      "Tap the ⌄ expand button on any strum line to reveal chord options",
+      "Expand any strum line to reveal chord options",
       "Beat labels: tap any slot above the beat grid to assign a chord change at that beat",
       "Chord cycle: tap + chord to label each repeat pass with a different chord (Am → G → F → C)",
     ],

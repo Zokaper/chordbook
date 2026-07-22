@@ -86,9 +86,10 @@ export default function LibraryScreen() {
   const filtered = useMemo(() => {
     const result = songs.filter((s: Song) => {
       const q = search.trim().toLowerCase();
+      const searchableTitle = s.title || "Untitled song";
       const matchesSearch =
         !q ||
-        s.title.toLowerCase().includes(q) ||
+        searchableTitle.toLowerCase().includes(q) ||
         s.artist.toLowerCase().includes(q);
       const matchesTags = activeTags.every((tag) => s.tags.includes(tag));
       const matchesKey = !activeKey || s.key === activeKey;
@@ -100,7 +101,7 @@ export default function LibraryScreen() {
     const sorted = [...result];
     switch (settings.sortBy) {
       case "title":
-        sorted.sort((a, b) => a.title.localeCompare(b.title));
+        sorted.sort((a, b) => (a.title || "Untitled song").localeCompare(b.title || "Untitled song"));
         break;
       case "artist":
         sorted.sort((a, b) => {

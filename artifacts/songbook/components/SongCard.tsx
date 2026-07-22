@@ -24,7 +24,7 @@ export function SongCard({ song, onDelete }: SongCardProps) {
 
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push(`/song/${song.id}`);
+    router.push(song.isDraft ? `/editor?id=${song.id}` : `/song/${song.id}`);
   };
 
   const handleLongPress = () => {
@@ -59,7 +59,7 @@ export function SongCard({ song, onDelete }: SongCardProps) {
             style={[styles.title, { color: colors.foreground }]}
             numberOfLines={1}
           >
-            {song.title}
+            {song.title || "Untitled song"}
           </Text>
           {!!song.artist && (
             <Text
@@ -70,6 +70,17 @@ export function SongCard({ song, onDelete }: SongCardProps) {
             </Text>
           )}
           <View style={styles.tags}>
+            {song.isDraft && (
+              <View
+                style={[
+                  styles.draftBadge,
+                  { backgroundColor: `${colors.accent}18`, borderColor: `${colors.accent}55` },
+                ]}
+              >
+                <Feather name="edit-3" size={10} color={colors.accent} />
+                <Text style={[styles.draftText, { color: colors.accent }]}>Draft</Text>
+              </View>
+            )}
             {!!song.key && (
               <View
                 style={[styles.keyBadge, { backgroundColor: colors.primary }]}
@@ -119,7 +130,7 @@ export function SongCard({ song, onDelete }: SongCardProps) {
           </View>
         </View>
         <View style={styles.right}>
-          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          <Feather name={song.isDraft ? "edit-2" : "chevron-right"} size={18} color={colors.mutedForeground} />
           <Text style={[styles.meta, { color: colors.mutedForeground }]}>
             {relativeTime(song.updatedAt)}
           </Text>
@@ -175,6 +186,19 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 2,
+  },
+  draftBadge: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  draftText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
   },
   keyText: {
     fontSize: 11,

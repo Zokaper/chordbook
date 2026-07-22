@@ -1,3 +1,4 @@
+import { Feather } from "@expo/vector-icons";
 import React from "react";
 import {
   Modal,
@@ -11,6 +12,8 @@ import { useColors } from "@/hooks/useColors";
 
 export interface ActionSheetOption {
   label: string;
+  description?: string;
+  icon?: keyof typeof Feather.glyphMap;
   destructive?: boolean;
   onPress: () => void;
 }
@@ -51,14 +54,26 @@ export function ActionSheetModal({
                 onPress={() => { onDismiss(); opt.onPress(); }}
                 style={({ pressed }) => [styles.option, { opacity: pressed ? 0.7 : 1 }]}
               >
-                <Text
-                  style={[
-                    styles.optionText,
-                    { color: opt.destructive ? colors.destructive : colors.foreground },
-                  ]}
-                >
-                  {opt.label}
-                </Text>
+                {!!opt.icon && (
+                  <View style={[styles.optionIcon, { backgroundColor: opt.destructive ? `${colors.destructive}14` : `${colors.primary}14` }]}>
+                    <Feather name={opt.icon} size={17} color={opt.destructive ? colors.destructive : colors.primary} />
+                  </View>
+                )}
+                <View style={styles.optionCopy}>
+                  <Text
+                    style={[
+                      styles.optionText,
+                      { color: opt.destructive ? colors.destructive : colors.foreground },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                  {!!opt.description && (
+                    <Text style={[styles.optionDescription, { color: colors.mutedForeground }]}>
+                      {opt.description}
+                    </Text>
+                  )}
+                </View>
               </Pressable>
             </React.Fragment>
           ))}
@@ -102,11 +117,16 @@ const styles = StyleSheet.create({
   },
   divider: { height: 1, opacity: 0.5 },
   option: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 12,
   },
-  optionText: { fontSize: 16, fontFamily: "Inter_500Medium" },
+  optionIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  optionCopy: { flex: 1, gap: 2 },
+  optionText: { fontSize: 15, fontFamily: "Inter_500Medium" },
+  optionDescription: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 16 },
   gap: { height: 8 },
   cancelRow: {
     paddingVertical: 16,
