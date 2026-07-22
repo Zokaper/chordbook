@@ -1,19 +1,25 @@
 {
   "name": "workspace",
   "version": "0.0.0",
-  "homepage": "https://zokaper.github.io/chordbook/",
+  "homepage": "https://chordbook.zokaper.cc/",
   "license": "MIT",
+  "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "preinstall": "node scripts/ensure-pnpm.cjs",
+    "dev": "corepack pnpm --filter @workspace/songbook run dev:web",
+    "dev:web": "corepack pnpm --filter @workspace/songbook run dev:web",
+    "preview:web": "corepack pnpm --filter @workspace/songbook run preview:web",
+    "build:web": "corepack pnpm --filter @workspace/songbook run build:web",
+    "test": "corepack pnpm --filter @workspace/songbook run test",
+    "test:watch": "corepack pnpm --filter @workspace/songbook run test:watch",
+    "check": "corepack pnpm run typecheck:app && corepack pnpm run test",
+    "build": "corepack pnpm run typecheck && corepack pnpm -r --if-present run build",
+    "typecheck:app": "corepack pnpm --filter @workspace/songbook run typecheck",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
-    "predeploy": "cd artifacts/songbook && EXPO_BASE_URL=/chordbook npx expo export --platform web",
-    "deploy": "gh-pages -d artifacts/songbook/dist --dotfiles"
+    "typecheck": "corepack pnpm run typecheck:libs && corepack pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
   "private": true,
   "devDependencies": {
-    "gh-pages": "^6.3.0",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
   }

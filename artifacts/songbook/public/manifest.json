@@ -1,0 +1,19 @@
+{
+  "name": "Chordbook",
+  "short_name": "Chordbook",
+  "description": "A private, build-first personal songbook for guitarists.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf6f2",
+  "theme_color": "#faf6f2",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

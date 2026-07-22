@@ -22,21 +22,21 @@
     },
     "web": {
       "bundler": "metro",
-      "baseUrl": "/chordbook"
+      "output": "single",
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       [
         "expo-router",
         {
-          "origin": "https://zokaper.github.io/chordbook" 
+          "origin": "https://chordbook.zokaper.cc"
         }
       ],
       "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true,
-      "baseUrl": "/chordbook"
+      "reactCompiler": true
     }
   }
 }
