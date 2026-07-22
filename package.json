@@ -10,6 +10,8 @@
     "dev:web": "corepack pnpm --filter @workspace/songbook run dev:web",
     "preview:web": "corepack pnpm --filter @workspace/songbook run preview:web",
     "build:web": "corepack pnpm --filter @workspace/songbook run build:web",
+    "cloudflare:login": "wrangler login",
+    "deploy:web": "corepack pnpm run build:web && wrangler pages deploy artifacts/songbook/dist --project-name chordbook --branch main",
     "test": "corepack pnpm --filter @workspace/songbook run test",
     "test:watch": "corepack pnpm --filter @workspace/songbook run test:watch",
     "check": "corepack pnpm run typecheck:app && corepack pnpm run test",
@@ -21,6 +23,7 @@
   "private": true,
   "devDependencies": {
     "prettier": "^3.8.1",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "wrangler": "^4.113.0"
   }
 }

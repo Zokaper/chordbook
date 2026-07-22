@@ -2,25 +2,46 @@
 
 Chordbook is built as a root-domain Expo single-page application and is intended to be hosted at `https://chordbook.zokaper.cc/`.
 
-## Cloudflare Pages setup
+## Cloudflare Pages deployment
 
-The `zokaper.cc` nameservers already point to Cloudflare, so Pages can create the `chordbook` DNS record and TLS certificate automatically.
+The `zokaper.cc` zone is already managed by Cloudflare, so Pages can validate the hostname and provision its TLS certificate after the DNS record points to the project.
+
+The canonical deployment is a Wrangler direct upload. This avoids Cloudflare's package-manager auto-detection running npm inside the pnpm workspace and failing on `catalog:` dependency references.
+
+One-time authentication:
+
+```powershell
+corepack pnpm install
+corepack pnpm run cloudflare:login
+```
+
+Build and deploy the production branch from the repository root:
+
+```powershell
+corepack pnpm run deploy:web
+```
+
+The root `wrangler.jsonc` identifies the `chordbook` Pages project and the exported `artifacts/songbook/dist` directory. The deployment script builds the Expo PWA locally with pnpm before uploading the static output, so Cloudflare does not install application dependencies.
+
+After the first deployment, associate `chordbook.zokaper.cc` in the Pages project's **Custom domains** settings. The hostname must have a proxied CNAME record named `chordbook` targeting `chordbook.pages.dev`; Pages then validates the hostname and manages its TLS certificate.
+
+## Optional Git integration
 
 In Cloudflare:
 
 1. Open **Workers & Pages** and create a Pages application connected to `Zokaper/chordbook`.
 2. Select `main` as the production branch.
 3. Use no framework preset.
-4. Keep the repository root as the build root.
+4. Keep the repository root as the build root so Cloudflare sees `pnpm-lock.yaml` and `pnpm-workspace.yaml`.
 5. Set the build command to `corepack pnpm run build:web`.
 6. Set the output directory to `artifacts/songbook/dist`.
 7. Set `NODE_VERSION` to `24` in the build environment.
 8. Deploy once to obtain the temporary `*.pages.dev` address.
 9. In the Pages project, open **Custom domains**, choose **Set up a domain**, and enter `chordbook.zokaper.cc`.
 
-Do not create the CNAME manually before associating the custom domain in Pages. Because the zone is already on Cloudflare, the dashboard should create the record and certificate as part of the custom-domain flow.
+If the dashboard does not create the DNS record during the custom-domain flow, add a proxied CNAME named `chordbook` targeting `chordbook.pages.dev` after the domain has been associated with the Pages project.
 
-Every push to `main` will then build and deploy production. Other branches receive Pages preview deployments.
+Every push to `main` will then build and deploy production. Other branches receive Pages preview deployments. Do not set the build root to `artifacts/songbook`; doing so hides the workspace lockfile and causes Cloudflare to invoke npm, which cannot resolve pnpm's `catalog:` protocol.
 
 ## Local development
 

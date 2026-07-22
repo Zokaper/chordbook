@@ -131,13 +131,13 @@ Any changes to these formats should include migration or backward-compatible par
 - The example song is automatically seeded on first run, so the onboarding action to add that same example may already show it as added.
 - Some statements in `replit.md` lag behind the current implementation. Source code is the current authority.
 - The full monorepo typecheck currently fails in the unused `artifacts/mockup-sandbox` because two installed React type versions produce incompatible `ref` types. The Chordbook app typecheck passes.
-- Cloudflare Pages and `chordbook.zokaper.cc` still need to be connected in the Cloudflare dashboard before the new domain is live.
+- The production Pages deployment is live at `https://chordbook.pages.dev`. The custom hostname is associated with the project but remains pending until a proxied `chordbook` CNAME targeting `chordbook.pages.dev` is created; the available OAuth grants do not include DNS write access.
 
 ## High-value next steps
 
 These are observations, not committed priorities:
 
-1. Connect the GitHub repository to Cloudflare Pages and attach `chordbook.zokaper.cc` using `DEPLOYMENT.md`.
+1. Add the pending `chordbook` CNAME in Cloudflare DNS, verify `https://chordbook.zokaper.cc`, and confirm Pages finishes TLS activation.
 2. Add component-level tests for autosave timing, draft finalization, and editor interaction flows.
 3. Consolidate chord-token parsing into a shared utility used by the library, chord screen, editor, and viewer.
 4. Add visible backup-import errors and stronger runtime validation.
@@ -184,6 +184,17 @@ These are observations, not committed priorities:
 - Made song persistence writes sequential and defensive, including preservation of unknown imported fields and migration of the new draft flag.
 - Extracted pure structured-content and song-migration utilities and expanded the automated suite from eight to thirteen tests.
 - Verified the app typecheck, all thirteen tests, the live Expo development bundle, and the root-domain production PWA build.
+
+### 2026-07-22 — Cloudflare Pages production deployment
+
+- Installed Cloudflare's official Codex skills and MCP integrations and authenticated both Codex and Wrangler.
+- Added Wrangler 4.113.0, a root `wrangler.jsonc`, and a repeatable `corepack pnpm run deploy:web` direct-upload workflow.
+- Made direct upload the canonical deployment path so Cloudflare never invokes npm against pnpm `catalog:` dependencies.
+- Created the `chordbook` Pages project and deployed the production Expo PWA to `https://chordbook.pages.dev`.
+- Associated `chordbook.zokaper.cc` with Pages and removed the obsolete Hello-world Worker custom-domain binding that previously owned the hostname; the Worker service itself was retained.
+- Verified the deployed root page, manifest, and service worker return HTTP 200 from `chordbook.pages.dev`.
+- Re-ran the Chordbook typecheck, all thirteen tests, and the production PWA build successfully.
+- Custom-domain activation remains pending on a proxied `chordbook` CNAME to `chordbook.pages.dev`; the authenticated automation grants have Pages and Workers write access but DNS read-only access.
 
 ## How to update this file
 
